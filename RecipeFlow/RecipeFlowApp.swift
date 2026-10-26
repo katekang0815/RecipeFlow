@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct RecipeFlowApp: App {
@@ -13,5 +14,6 @@ struct RecipeFlowApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: Recipe.self)
     }
 }
