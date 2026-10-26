@@ -48,7 +48,11 @@ final class Recipe {
 
     func deleteSteps(at offsets: IndexSet, in context: ModelContext) {
         let ordered = sortedSteps
-        for offset in offsets { context.delete(ordered[offset]) }
+        let removed = offsets.map { ordered[$0] }
+        // Deleting from the context alone leaves the steps in `steps` until SwiftData
+        // processes pending changes, so drop them here too.
+        steps.removeAll { step in removed.contains { $0 === step } }
+        for step in removed { context.delete(step) }
         renumber(ordered.enumerated().filter { !offsets.contains($0.offset) }.map(\.element))
     }
 
@@ -56,6 +60,14 @@ final class Recipe {
         var ordered = sortedSteps
         ordered.move(fromOffsets: source, toOffset: destination)
         renumber(ordered)
+    }
+
+    /// Deletes the recipe and its children explicitly; the `.cascade` rule did not remove
+    /// children in an in-memory test store, so we don't rely on it alone.
+    func delete(from context: ModelContext) {
+        for ingredient in ingredients { context.delete(ingredient) }
+        for step in steps { context.delete(step) }
+        context.delete(self)
     }
 
     private func renumber(_ ordered: [Step]) {
