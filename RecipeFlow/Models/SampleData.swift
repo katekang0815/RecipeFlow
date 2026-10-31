@@ -7,21 +7,26 @@ import SwiftData
 
 extension Recipe {
     /// The Bolognese recipe from the design reference, for previews and tests.
-    static func makeSample() -> Recipe {
+    /// Inserts into `context` before touching relationships; SwiftData crashes if a
+    /// model that isn't in a context yet reads or writes a to-many relationship.
+    @discardableResult
+    static func makeSample(in context: ModelContext) -> Recipe {
         let recipe = Recipe(title: "Bolognese Pasta", rawText: "")
-        let ingredients: [(String, String, String, String)] = [
-            ("spaghetti", "400", "g", ""),
-            ("ground beef", "400", "g", ""),
-            ("onion", "1", "", "diced"),
-            ("garlic cloves", "2", "", "minced"),
-            ("carrot", "1", "", "diced"),
-            ("celery stalk", "1", "", "diced"),
-            ("crushed tomatoes", "1", "can (400 g)", ""),
-            ("olive oil", "2", "tbsp", ""),
-            ("salt, pepper, herbs", "", "", "to taste"),
+        context.insert(recipe)
+        let ingredients: [(name: String, quantity: String, unit: String, prep: String, icon: String)] = [
+            ("spaghetti", "400", "g", "", "fork.knife"),
+            ("ground beef", "400", "g", "", "flame"),
+            ("onion", "1", "", "diced", "leaf"),
+            ("garlic cloves", "2", "", "minced", "leaf"),
+            ("carrot", "1", "", "diced", "carrot"),
+            ("celery stalk", "1", "", "diced", "leaf"),
+            ("crushed tomatoes", "400", "g can", "", "circle.grid.2x2"),
+            ("olive oil", "2", "tbsp", "", "drop"),
+            ("salt, pepper, herbs", "", "", "to taste", "cup.and.saucer"),
         ]
-        for (name, quantity, unit, prep) in ingredients {
-            recipe.addIngredient(Ingredient(name: name, quantity: quantity, unit: unit, prepNote: prep))
+        for item in ingredients {
+            recipe.addIngredient(Ingredient(name: item.name, quantity: item.quantity, unit: item.unit,
+                                            prepNote: item.prep, iconName: item.icon))
         }
         let steps: [(String, String, String)] = [
             ("Prepare veg", "Dice the onion, carrot and celery. Mince the garlic.", "scissors"),
@@ -43,10 +48,10 @@ enum PersistenceController {
     @MainActor
     static func previewContainer(withSample: Bool = true) -> ModelContainer {
         let container = try! ModelContainer(
-            for: Recipe.self,
+            for: Recipe.self, Ingredient.self, Step.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
-        if withSample { container.mainContext.insert(Recipe.makeSample()) }
+        if withSample { Recipe.makeSample(in: container.mainContext) }
         return container
     }
 }

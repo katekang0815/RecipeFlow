@@ -6,19 +6,30 @@
 //
 
 import SwiftUI
+import SwiftData
 
+/// Temporary root: shows the first saved recipe. The home list and paste screen replace this.
 struct ContentView: View {
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Recipe.createdAt) private var recipes: [Recipe]
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack {
+            if let recipe = recipes.first {
+                RecipeDetailView(recipe: recipe)
+            } else {
+                ContentUnavailableView("No recipes yet", systemImage: "fork.knife")
+            }
         }
-        .padding()
+        #if DEBUG
+        .task {
+            if recipes.isEmpty { Recipe.makeSample(in: context) }
+        }
+        #endif
     }
 }
 
 #Preview {
     ContentView()
+        .modelContainer(PersistenceController.previewContainer())
 }

@@ -35,8 +35,16 @@ final class Recipe {
     }
 
     func addIngredient(_ ingredient: Ingredient) {
-        ingredient.sortIndex = ingredients.count
+        // max + 1 rather than count, so indexes stay unique after deletions
+        ingredient.sortIndex = (ingredients.map(\.sortIndex).max() ?? -1) + 1
         ingredients.append(ingredient)
+    }
+
+    func deleteIngredients(at offsets: IndexSet, in context: ModelContext) {
+        let ordered = sortedIngredients
+        let removed = offsets.map { ordered[$0] }
+        ingredients.removeAll { item in removed.contains { $0 === item } }
+        for item in removed { context.delete(item) }
     }
 
     func insertStep(_ step: Step, at index: Int) {

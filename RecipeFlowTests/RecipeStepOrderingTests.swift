@@ -75,4 +75,14 @@ struct RecipeStepOrderingTests {
         #expect(try context.fetch(FetchDescriptor<Step>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<Ingredient>()).isEmpty)
     }
+
+    @Test func ingredientIndexesStayUniqueAfterDelete() throws {
+        let (recipe, context, container) = makeRecipe([])
+        withExtendedLifetime(container) {}
+        for name in ["a", "b", "c"] { recipe.addIngredient(Ingredient(name: name)) }
+        recipe.deleteIngredients(at: IndexSet(integer: 0), in: context)
+        recipe.addIngredient(Ingredient(name: "d"))
+        #expect(recipe.sortedIngredients.map(\.name) == ["b", "c", "d"])
+        #expect(Set(recipe.ingredients.map(\.sortIndex)).count == 3)
+    }
 }

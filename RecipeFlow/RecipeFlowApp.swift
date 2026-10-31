@@ -14,6 +14,6 @@ struct RecipeFlowApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: Recipe.self)
+        .modelContainer(for: [Recipe.self, Ingredient.self, Step.self])
     }
 }
