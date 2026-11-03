@@ -15,36 +15,21 @@ struct RecipeDetailView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            TextEditor(text: $recipe.rawText)
-                .accessibilityIdentifier("recipeTextEditor")
-                .scrollContentBackground(.hidden)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
-                .overlay(alignment: .topLeading) {
-                    if recipe.rawText.isEmpty {
-                        Text("Paste your recipe here")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 17)
-                            .padding(.vertical, 20)
-                            .allowsHitTesting(false)
-                    }
-                }
+            RecipeTextField(text: $recipe.rawText, identifier: "recipeTextEditor")
 
             // The parser will hook in here; for now Create does nothing.
             Button {
             } label: {
-                Text("Create")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                Text("Create").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.orange)
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(isEmpty)
         }
         .padding(16)
+        .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.background, for: .navigationBar)
     }
 }
 

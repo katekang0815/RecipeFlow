@@ -13,6 +13,7 @@ struct RecipeFlowApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView()
+                .preferredColorScheme(.light)
         }
         .modelContainer(for: [Recipe.self, Ingredient.self, Step.self])
     }

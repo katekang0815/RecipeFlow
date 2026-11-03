@@ -19,15 +19,11 @@ struct HomeView: View {
         NavigationStack(path: $path) {
             Button { path.append(.paste) } label: {
                 Label("Add", systemImage: "plus")
-                    .font(.title3.weight(.semibold))
-                    .padding(.horizontal, 12)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.orange)
+            .buttonStyle(PrimaryButtonStyle())
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("RecipeFlow")
-            .navigationBarTitleDisplayMode(.inline)
+            .background(Theme.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .paste:
@@ -37,6 +33,7 @@ struct HomeView: View {
                 }
             }
         }
+        .tint(Theme.ink)
     }
 
     // No parser yet: keep the pasted text on a new recipe and open it for editing.

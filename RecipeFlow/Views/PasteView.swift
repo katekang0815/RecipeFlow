@@ -15,35 +15,20 @@ struct PasteView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            TextEditor(text: $text)
+            RecipeTextField(text: $text, identifier: "pasteTextEditor")
                 .focused($isFocused)
-                .accessibilityIdentifier("pasteTextEditor")
-                .scrollContentBackground(.hidden)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
-                .overlay(alignment: .topLeading) {
-                    if text.isEmpty {
-                        Text("Paste your recipe here")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 17)
-                            .padding(.vertical, 20)
-                            .allowsHitTesting(false)
-                    }
-                }
 
             Button { onCreate(trimmed) } label: {
-                Text("Create recipe")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                Text("Create recipe").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .tint(.orange)
+            .buttonStyle(PrimaryButtonStyle())
             .disabled(trimmed.isEmpty)
         }
         .padding(16)
+        .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Paste recipe")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Theme.background, for: .navigationBar)
         .onAppear { isFocused = true }
     }
 }

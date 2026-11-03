@@ -22,6 +22,14 @@ final class RecipeFlowUITests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
+
+    private func snap(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
@@ -36,21 +44,25 @@ final class RecipeFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
+        snap(app, "1-home")
         app.buttons["Add"].tap()
         let editor = app.textViews["pasteTextEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
 
         let create = app.buttons["Create recipe"]
+        snap(app, "2-paste-empty")
         XCTAssertFalse(create.isEnabled, "Create should be disabled while the text is empty")
 
         editor.tap()
         editor.typeText("Toast\nIngredients: bread")
         XCTAssertTrue(create.isEnabled)
+        snap(app, "3-paste-filled")
         create.tap()
 
         let recipeEditor = app.textViews["recipeTextEditor"]
         XCTAssertTrue(recipeEditor.waitForExistence(timeout: 5))
         XCTAssertTrue((recipeEditor.value as? String ?? "").contains("Toast"))
+        snap(app, "4-recipe")
         XCTAssertTrue(app.buttons["Create"].exists, "Create button should sit outside the text field")
     }
 
