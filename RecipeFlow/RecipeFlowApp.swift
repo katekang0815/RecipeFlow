@@ -12,7 +12,7 @@ import SwiftData
 struct RecipeFlowApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            HomeView()
         }
         .modelContainer(for: [Recipe.self, Ingredient.self, Step.self])
     }
