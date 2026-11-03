@@ -32,6 +32,28 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testAddButtonOpensPasteScreenAndCreatesRecipe() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+
+        let create = app.buttons["Create recipe"]
+        XCTAssertFalse(create.isEnabled, "Create should be disabled while the text is empty")
+
+        editor.tap()
+        editor.typeText("Toast\nIngredients: bread")
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+
+        // The title field grows vertically, so it can surface as a text view or a text field.
+        let title = app.descendants(matching: .any)["Recipe title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
