@@ -48,9 +48,10 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(create.isEnabled)
         create.tap()
 
-        // The title field grows vertically, so it can surface as a text view or a text field.
-        let title = app.descendants(matching: .any)["Recipe title"]
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let recipeEditor = app.textViews["recipeTextEditor"]
+        XCTAssertTrue(recipeEditor.waitForExistence(timeout: 5))
+        XCTAssertTrue((recipeEditor.value as? String ?? "").contains("Toast"))
+        XCTAssertTrue(app.buttons["Create"].exists, "Create button should sit outside the text field")
     }
 
     @MainActor
