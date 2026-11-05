@@ -59,11 +59,9 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "3-paste-filled")
         create.tap()
 
-        let recipeEditor = app.textViews["recipeTextEditor"]
-        XCTAssertTrue(recipeEditor.waitForExistence(timeout: 5))
-        XCTAssertTrue((recipeEditor.value as? String ?? "").contains("Toast"))
-        snap(app, "4-recipe")
-        XCTAssertTrue(app.buttons["Create"].exists, "Create button should sit outside the text field")
+        XCTAssertTrue(app.staticTexts["Ingredients will appear here"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Steps will appear here"].exists)
+        snap(app, "4-recipe-flow")
     }
 
     @MainActor

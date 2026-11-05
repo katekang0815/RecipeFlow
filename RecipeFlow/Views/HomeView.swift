@@ -29,14 +29,14 @@ struct HomeView: View {
                 case .paste:
                     PasteView(onCreate: createRecipe)
                 case .recipe(let recipe):
-                    RecipeDetailView(recipe: recipe)
+                    RecipeFlowView(recipe: recipe)
                 }
             }
         }
         .tint(Theme.ink)
     }
 
-    // No parser yet: keep the pasted text on a new recipe and open it for editing.
+    // No parser yet: keep the pasted text on a new recipe and open its flow page.
     // The recipe replaces the paste screen so Back returns home.
     private func createRecipe(from text: String) {
         let recipe = Recipe(rawText: text)
