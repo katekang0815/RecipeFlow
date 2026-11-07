@@ -6,10 +6,11 @@
 import SwiftUI
 import UIKit
 
-/// Presents the system camera and hands back the photo that was taken.
+/// Presents the system camera. Reports the photo, or a cancel; the caller decides
+/// what happens next (crop, dismiss).
 struct CameraPicker: UIViewControllerRepresentable {
     var onCapture: (UIImage) -> Void
-    @Environment(\.dismiss) private var dismiss
+    var onCancel: () -> Void
 
     static var isAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
@@ -37,12 +38,40 @@ struct CameraPicker: UIViewControllerRepresentable {
         ) {
             if let image = info[.originalImage] as? UIImage {
                 parent.onCapture(image)
+            } else {
+                parent.onCancel()
             }
-            parent.dismiss()
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.dismiss()
+            parent.onCancel()
+        }
+    }
+}
+
+/// Camera, then crop. Retake goes back to the camera; Use photo hands the cropped image on.
+struct CameraFlow: View {
+    var onFinish: (UIImage) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var captured: UIImage?
+
+    var body: some View {
+        if let captured {
+            CropView(
+                image: captured,
+                onDone: { image in
+                    onFinish(image)
+                    dismiss()
+                },
+                onRetake: { self.captured = nil }
+            )
+        } else {
+            CameraPicker(
+                onCapture: { captured = ImageCropper.upright($0) },
+                onCancel: { dismiss() }
+            )
+            .ignoresSafeArea()
         }
     }
 }

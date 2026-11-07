@@ -37,6 +37,19 @@ struct TextRecognizerTests {
         #expect(first.lowerBound < second.lowerBound)
     }
 
+    @Test func readsKoreanText() async throws {
+        let text = try await TextRecognizer.recognize(in: image(of: ["재료", "밀가루 40g", "설탕 60g"]))
+        #expect(text.contains("재료"))
+        #expect(text.contains("밀가루"))
+        #expect(text.contains("설탕"))
+    }
+
+    @Test func readsMixedKoreanAndEnglish() async throws {
+        let text = try await TextRecognizer.recognize(in: image(of: ["1. 밀가루 and sugar를 섞는다"]))
+        #expect(text.contains("밀가루"))
+        #expect(text.contains("sugar"))
+    }
+
     @Test func blankImageGivesEmptyText() async throws {
         let text = try await TextRecognizer.recognize(in: image(of: []))
         #expect(text.isEmpty)

@@ -47,6 +47,10 @@ enum TextRecognizer {
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
+            // Vision reads only English unless told otherwise. Let it detect the
+            // language, and prefer Korean and English when it is unsure.
+            request.recognitionLanguages = ["ko-KR", "en-US"]
+            request.automaticallyDetectsLanguage = true
 
             DispatchQueue.global(qos: .userInitiated).async {
                 let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation)

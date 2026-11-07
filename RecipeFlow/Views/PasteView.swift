@@ -76,10 +76,9 @@ struct PasteView: View {
             Task { await scan(item) }
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { image in
+            CameraFlow { image in
                 Task { await scan(image) }
             }
-            .ignoresSafeArea()
         }
         .alert("Camera access is off", isPresented: $showCameraDenied) {
             Button("Open Settings") {

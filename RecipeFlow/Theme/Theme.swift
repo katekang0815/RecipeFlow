@@ -29,6 +29,19 @@ struct PrimaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Brown outline button for secondary actions.
+struct SecondaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 22, weight: .bold))
+            .foregroundStyle(Theme.ink)
+            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .background(RoundedRectangle(cornerRadius: 16).stroke(Theme.ink, lineWidth: 2))
+            .opacity(configuration.isPressed ? 0.6 : 1)
+    }
+}
+
 /// Large text input used on the paste and recipe screens.
 struct RecipeTextField: View {
     @Binding var text: String
