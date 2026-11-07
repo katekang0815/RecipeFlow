@@ -5,12 +5,16 @@
 
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
 struct PasteView: View {
     var onCreate: (String) -> Void
 
     @State private var text = ""
     @State private var pickerItem: PhotosPickerItem?
+    @State private var showLibrary = false
+    @State private var showCamera = false
+    @State private var showCameraDenied = false
     @State private var isScanning = false
     @State private var scanMessage: String?
     @FocusState private var isFocused: Bool
@@ -28,7 +32,16 @@ struct PasteView: View {
                     .foregroundStyle(Theme.ink.opacity(0.7))
             }
 
-            PhotosPicker(selection: $pickerItem, matching: .images) {
+            Menu {
+                if CameraPicker.isAvailable {
+                    Button { requestCamera() } label: {
+                        Label("Take photo", systemImage: "camera")
+                    }
+                }
+                Button { showLibrary = true } label: {
+                    Label("Choose from library", systemImage: "photo")
+                }
+            } label: {
                 Group {
                     if isScanning {
                         ProgressView().tint(Theme.ink)
@@ -57,28 +70,63 @@ struct PasteView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
         .onAppear { isFocused = true }
+        .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task { await scan(item) }
         }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraPicker { image in
+                Task { await scan(image) }
+            }
+            .ignoresSafeArea()
+        }
+        .alert("Camera access is off", isPresented: $showCameraDenied) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Allow camera access in Settings to take a photo of a recipe.")
+        }
     }
 
-    /// Runs OCR on the picked photo and appends the result to the text field,
-    /// so the user can fix any misread characters before creating the recipe.
+    /// iOS asks for permission the first time; after a "no" the user has to use Settings.
+    private func requestCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted { showCamera = true } else { showCameraDenied = true }
+                }
+            }
+        default:
+            showCameraDenied = true
+        }
+    }
+
     private func scan(_ item: PhotosPickerItem) async {
+        defer { pickerItem = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else {
+            scanMessage = "Couldn't open that photo."
+            return
+        }
+        await scan(image)
+    }
+
+    /// Runs OCR on a photo and appends the result to the text field,
+    /// so the user can fix any misread characters before creating the recipe.
+    private func scan(_ image: UIImage) async {
         isScanning = true
         scanMessage = nil
-        defer {
-            isScanning = false
-            pickerItem = nil
-        }
+        defer { isScanning = false }
 
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
-                scanMessage = "Couldn't open that photo."
-                return
-            }
             let recognized = try await TextRecognizer.recognize(in: image)
             if recognized.isEmpty {
                 scanMessage = "No text found in that photo."

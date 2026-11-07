@@ -65,6 +65,22 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testAddPhotoMenuOffersLibraryAndHidesCameraWithoutOne() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let addPhoto = app.buttons["addPhotoButton"]
+        XCTAssertTrue(addPhoto.waitForExistence(timeout: 5))
+        addPhoto.tap()
+
+        XCTAssertTrue(app.buttons["Choose from library"].waitForExistence(timeout: 5))
+        snap(app, "5-add-photo-menu")
+        // The Simulator has no camera, so the camera choice must not be offered.
+        XCTAssertFalse(app.buttons["Take photo"].exists)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
