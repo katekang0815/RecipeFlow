@@ -59,9 +59,48 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "3-paste-filled")
         create.tap()
 
-        XCTAssertTrue(app.staticTexts["Ingredients will appear here"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Steps will appear here"].exists)
+        // "Toast" is the title and "bread" the only ingredient; there are no steps.
+        XCTAssertTrue(app.staticTexts["bread"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No steps found"].exists)
         snap(app, "4-recipe-flow")
+    }
+
+    @MainActor
+    func testCreateShowsTheSplitRecipe() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("""
+        Tangzhong Bread
+        Ingredients
+        Tangzhong:
+        40g bread flour
+        200g water
+
+        580g bread flour
+        salt to taste
+        egg wash (1 egg yolk + milk)
+        Directions
+        1. Mix flour with water. Stir until thick.
+        2. Refrigerate for 6 hours.
+        """)
+        app.buttons["Create recipe"].tap()
+
+        XCTAssertTrue(app.staticTexts["Tangzhong Bread"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tangzhong"].exists, "group heading")
+        XCTAssertTrue(app.staticTexts["40 g bread flour"].exists)
+        XCTAssertTrue(app.staticTexts["580 g bread flour"].exists)
+        XCTAssertTrue(app.staticTexts["salt, to taste"].exists)
+        XCTAssertTrue(app.staticTexts["egg wash"].exists)
+        XCTAssertTrue(app.staticTexts["1 egg yolk + milk"].exists, "note under the ingredient")
+        XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+        XCTAssertFalse(app.staticTexts["No steps found"].exists)
+        snap(app, "5-split-recipe")
     }
 
     @MainActor
