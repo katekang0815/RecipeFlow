@@ -59,6 +59,12 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "3-paste-filled")
         create.tap()
 
+        // One ingredient and no steps is only part of a recipe, so the app asks first.
+        let createAnyway = app.alerts.buttons["Create anyway"]
+        XCTAssertTrue(createAnyway.waitForExistence(timeout: 5))
+        snap(app, "3b-partial-warning")
+        createAnyway.tap()
+
         // "Toast" is the title and "bread" the only ingredient; there are no steps.
         XCTAssertTrue(app.staticTexts["bread"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["No steps found"].exists)
@@ -101,6 +107,30 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
         snap(app, "5-split-recipe")
+    }
+
+    @MainActor
+    func testCreateTurnsAwayTextThatIsNotARecipe() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("The weather was lovely today and we walked along the river for a long time.")
+        app.buttons["Create recipe"].tap()
+
+        let message = app.staticTexts["pasteMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertTrue(message.label.contains("doesn't look like an organized recipe"))
+        XCTAssertFalse(app.staticTexts["Ingredients"].exists, "the flow page must not open")
+        XCTAssertTrue(app.buttons["Create recipe"].exists, "still on the paste screen")
+        snap(app, "6-rejected")
+
+        // Editing the text clears the message.
+        editor.typeText(" ")
+        XCTAssertFalse(message.exists)
     }
 
     @MainActor

@@ -17,6 +17,9 @@ struct PasteView: View {
     @State private var showCameraDenied = false
     @State private var isScanning = false
     @State private var scanMessage: String?
+    @State private var checkMessage: String?
+    @State private var warning = ""
+    @State private var showWarning = false
     @FocusState private var isFocused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -26,8 +29,9 @@ struct PasteView: View {
             RecipeTextField(text: $text, identifier: "pasteTextEditor")
                 .focused($isFocused)
 
-            if let scanMessage {
-                Text(scanMessage)
+            if let message = checkMessage ?? scanMessage {
+                Text(message)
+                    .accessibilityIdentifier("pasteMessage")
                     .font(.footnote)
                     .foregroundStyle(Theme.ink.opacity(0.7))
             }
@@ -58,7 +62,7 @@ struct PasteView: View {
             .disabled(isScanning)
             .accessibilityIdentifier("addPhotoButton")
 
-            Button { onCreate(trimmed) } label: {
+            Button { create() } label: {
                 Text("Create recipe").frame(maxWidth: .infinity)
             }
             .buttonStyle(PrimaryButtonStyle())
@@ -80,6 +84,13 @@ struct PasteView: View {
                 Task { await scan(image) }
             }
         }
+        .onChange(of: text) { checkMessage = nil }
+        .alert("Check your recipe", isPresented: $showWarning) {
+            Button("Create anyway") { onCreate(trimmed) }
+            Button("Keep editing", role: .cancel) {}
+        } message: {
+            Text(warning)
+        }
         .alert("Camera access is off", isPresented: $showCameraDenied) {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -89,6 +100,20 @@ struct PasteView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Allow camera access in Settings to take a photo of a recipe.")
+        }
+    }
+
+    /// Only organized recipes get through. Text with no recipe in it is turned away,
+    /// and a partial recipe asks first.
+    private func create() {
+        switch RecipeChecker.check(text: trimmed) {
+        case .ready:
+            onCreate(trimmed)
+        case .partial(let issue):
+            warning = issue.message
+            showWarning = true
+        case .rejected:
+            checkMessage = RecipeCheck.rejectedMessage
         }
     }
 
