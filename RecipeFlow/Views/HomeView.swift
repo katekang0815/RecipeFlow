@@ -101,7 +101,7 @@ private struct RecipeRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(recipe.title)
+                Text(recipe.displayTitle)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.ink)
                 Text(summary)

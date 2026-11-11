@@ -68,6 +68,11 @@ struct RecipePersistenceTests {
         #expect(recipe.title == "Untitled recipe")
     }
 
+    @Test func emptyTitleFromAnOlderRecipeShowsAsUntitled() {
+        #expect(Recipe(title: "").displayTitle == "Untitled recipe")
+        #expect(Recipe(title: "Toast").displayTitle == "Toast")
+    }
+
     @Test func eachCreateMakesAnotherRecipe() throws {
         let container = PersistenceController.previewContainer(withSample: false)
         Recipe.create(from: text, in: container.mainContext)

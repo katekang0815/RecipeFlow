@@ -9,6 +9,11 @@ import SwiftData
 extension Recipe {
     static let untitledTitle = "Untitled recipe"
 
+    /// Recipes saved before titles existed have an empty one.
+    var displayTitle: String {
+        title.isEmpty ? Recipe.untitledTitle : title
+    }
+
     /// Parses `text` and saves the result as a new recipe with its ingredients and steps.
     @discardableResult
     static func create(from text: String, in context: ModelContext) -> Recipe {

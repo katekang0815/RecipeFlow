@@ -14,7 +14,7 @@ struct RecipeFlowView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text(recipe.title)
+                Text(recipe.displayTitle)
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(Theme.ink)
                     .accessibilityIdentifier("recipeTitle")
