@@ -10,11 +10,22 @@ import SwiftData
 
 @main
 struct RecipeFlowApp: App {
+    private let container: ModelContainer
+
+    init() {
+        // UI tests pass -inMemoryStore so every run starts with no saved recipes.
+        let inMemory = CommandLine.arguments.contains("-inMemoryStore")
+        container = try! ModelContainer(
+            for: Recipe.self, Ingredient.self, Step.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: inMemory)
+        )
+    }
+
     var body: some Scene {
         WindowGroup {
             HomeView()
                 .preferredColorScheme(.light)
         }
-        .modelContainer(for: [Recipe.self, Ingredient.self, Step.self])
+        .modelContainer(container)
     }
 }

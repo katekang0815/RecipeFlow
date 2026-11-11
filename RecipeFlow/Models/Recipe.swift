@@ -12,6 +12,8 @@ final class Recipe {
     var title: String
     var rawText: String
     var createdAt: Date
+    /// Lines the parser could not place, kept so the user can see what was skipped.
+    var ignoredLines: [String] = []
 
     @Relationship(deleteRule: .cascade, inverse: \Ingredient.recipe)
     var ingredients: [Ingredient] = []

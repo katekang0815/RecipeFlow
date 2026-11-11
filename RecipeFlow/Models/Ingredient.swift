@@ -13,16 +13,19 @@ final class Ingredient {
     var unit: String
     var prepNote: String   // e.g. "diced", "minced"
     var iconName: String   // SF Symbol name
+    var group: String?     // sub-recipe label such as "Tangzhong"
     var sortIndex: Int
     var recipe: Recipe?
 
     init(name: String = "", quantity: String = "", unit: String = "",
-         prepNote: String = "", iconName: String = "carrot", sortIndex: Int = 0) {
+         prepNote: String = "", iconName: String = "carrot", group: String? = nil,
+         sortIndex: Int = 0) {
         self.name = name
         self.quantity = quantity
         self.unit = unit
         self.prepNote = prepNote
         self.iconName = iconName
+        self.group = group
         self.sortIndex = sortIndex
     }
 }

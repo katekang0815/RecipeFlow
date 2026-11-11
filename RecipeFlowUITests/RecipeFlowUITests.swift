@@ -34,6 +34,7 @@ final class RecipeFlowUITests: XCTestCase {
     func testExample() throws {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
         app.launch()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
@@ -42,6 +43,7 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testAddButtonOpensPasteScreenAndCreatesRecipe() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
         app.launch()
 
         snap(app, "1-home")
@@ -74,6 +76,7 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testCreateShowsTheSplitRecipe() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
         app.launch()
 
         app.buttons["Add"].tap()
@@ -107,11 +110,47 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
         snap(app, "5-split-recipe")
+
+        // Back on the home screen the saved recipe is listed, and it opens again.
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Tangzhong Bread"))
+        XCTAssertTrue(row.label.contains("5 ingredients · 2 steps"))
+        snap(app, "7-home-list")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["40 g bread flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+    }
+
+    @MainActor
+    func testSwipeToDeleteRemovesASavedRecipe() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast the bread.\n2. Spread the butter.")
+        app.buttons["Create recipe"].tap()
+        XCTAssertTrue(app.staticTexts["2 slices bread"].waitForExistence(timeout: 5))
+
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+
+        row.swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["recipeRow"].exists, "list is empty again")
     }
 
     @MainActor
     func testCreateTurnsAwayTextThatIsNotARecipe() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
         app.launch()
 
         app.buttons["Add"].tap()
@@ -136,6 +175,7 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testAddPhotoMenuOffersLibraryAndHidesCameraWithoutOne() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
         app.launch()
 
         app.buttons["Add"].tap()

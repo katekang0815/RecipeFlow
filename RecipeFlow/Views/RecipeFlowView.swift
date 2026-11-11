@@ -6,27 +6,24 @@
 import SwiftUI
 import SwiftData
 
-/// Shown after Create: the recipe text split into ingredients and steps.
-/// Plain lists for now; icons and editing come later.
+/// A saved recipe: its ingredients and steps. Plain lists for now;
+/// icons and editing come later.
 struct RecipeFlowView: View {
     var recipe: Recipe
 
     var body: some View {
-        let parsed = RecipeParser.parse(recipe.rawText)
-
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if let title = parsed.title {
-                    Text(title)
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(Theme.ink)
-                }
+                Text(recipe.title)
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                    .accessibilityIdentifier("recipeTitle")
 
-                section("Ingredients") { ingredients(parsed.ingredients) }
-                section("Steps") { steps(parsed.steps) }
+                section("Ingredients") { ingredients(recipe.sortedIngredients) }
+                section("Steps") { steps(recipe.sortedSteps) }
 
-                if !parsed.ignoredLines.isEmpty {
-                    ignored(parsed.ignoredLines)
+                if !recipe.ignoredLines.isEmpty {
+                    ignored(recipe.ignoredLines)
                 }
             }
             .padding(16)
@@ -58,8 +55,8 @@ struct RecipeFlowView: View {
     // MARK: Ingredients
 
     /// Consecutive ingredients with the same group, so each group gets one heading.
-    private func grouped(_ items: [ParsedIngredient]) -> [(group: String?, items: [ParsedIngredient])] {
-        var result: [(group: String?, items: [ParsedIngredient])] = []
+    private func grouped(_ items: [Ingredient]) -> [(group: String?, items: [Ingredient])] {
+        var result: [(group: String?, items: [Ingredient])] = []
         for item in items {
             if let last = result.last, last.group == item.group {
                 result[result.count - 1].items.append(item)
@@ -71,7 +68,7 @@ struct RecipeFlowView: View {
     }
 
     @ViewBuilder
-    private func ingredients(_ items: [ParsedIngredient]) -> some View {
+    private func ingredients(_ items: [Ingredient]) -> some View {
         if items.isEmpty {
             placeholder("No ingredients found")
         } else {
@@ -83,7 +80,7 @@ struct RecipeFlowView: View {
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(Theme.ink)
                         }
-                        ForEach(Array(block.items.enumerated()), id: \.offset) { _, item in
+                        ForEach(block.items) { item in
                             ingredientRow(item)
                         }
                     }
@@ -96,19 +93,19 @@ struct RecipeFlowView: View {
     }
 
     /// "40 g bread flour", or "salt, to taste" when the amount has no number.
-    private func label(for item: ParsedIngredient) -> String {
+    private func label(for item: Ingredient) -> String {
         if item.quantity.contains(where: \.isNumber) || item.quantity.isEmpty {
             return [item.quantity, item.unit, item.name].filter { !$0.isEmpty }.joined(separator: " ")
         }
         return "\(item.name), \(item.quantity)"
     }
 
-    private func ingredientRow(_ item: ParsedIngredient) -> some View {
+    private func ingredientRow(_ item: Ingredient) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label(for: item))
                 .foregroundStyle(Theme.ink)
-            if !item.note.isEmpty {
-                Text(item.note)
+            if !item.prepNote.isEmpty {
+                Text(item.prepNote)
                     .font(.footnote)
                     .foregroundStyle(Theme.ink.opacity(0.6))
             }
@@ -118,7 +115,7 @@ struct RecipeFlowView: View {
     // MARK: Steps
 
     @ViewBuilder
-    private func steps(_ items: [ParsedStep]) -> some View {
+    private func steps(_ items: [Step]) -> some View {
         if items.isEmpty {
             placeholder("No steps found")
         } else {
@@ -166,7 +163,7 @@ struct RecipeFlowView: View {
 
 #Preview {
     let container = PersistenceController.previewContainer(withSample: false)
-    let recipe = Recipe(rawText: """
+    let recipe = Recipe.create(from: """
     Toast
     Ingredients
     2 slices bread
@@ -175,8 +172,7 @@ struct RecipeFlowView: View {
     Directions
     1. Toast the bread. Let it cool a little.
     2. Spread the butter on top.
-    """)
-    container.mainContext.insert(recipe)
+    """, in: container.mainContext)
     return NavigationStack { RecipeFlowView(recipe: recipe) }
         .modelContainer(container)
 }
