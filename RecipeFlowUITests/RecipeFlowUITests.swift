@@ -129,6 +129,44 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testBulletsStayInsideTheirNumberedStepAndLeftoverTextGoesToTheNote() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("""
+        Ingredients
+        2 cups flour
+        1 cup water
+        1. Roast the Garlic
+        - Preheat: Set your oven to 375F.
+        - Prep: Slice the tips off the bulbs.
+        2. Brown the Meat
+        - Sear: Add the beef.
+        Serve with bread.
+        """)
+        app.buttons["Create recipe"].tap()
+
+        // Only the two numbered lines are steps; the bullets sit inside them.
+        XCTAssertTrue(app.staticTexts["Roast the Garlic"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Brown the Meat"].exists)
+        XCTAssertFalse(app.staticTexts["Preheat: Set your oven to 375F."].exists, "a bullet is not a step of its own")
+        let detail = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Preheat")).firstMatch
+        XCTAssertTrue(detail.exists)
+        XCTAssertTrue(detail.label.contains("• Prep: Slice the tips off the bulbs."))
+
+        // The leftover line is in the Note, and nothing is listed as ignored.
+        XCTAssertTrue(app.staticTexts["Serve with bread."].exists)
+        XCTAssertTrue(app.staticTexts["Note"].exists)
+        XCTAssertFalse(app.staticTexts["ignoredLines"].exists)
+        snap(app, "11-bulleted-steps-and-note")
+    }
+
+    @MainActor
     func testSourceLinkCanBeAddedEditedAndRemoved() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]

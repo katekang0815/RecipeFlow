@@ -16,9 +16,9 @@ struct ParsedIngredient: Equatable {
 }
 
 struct ParsedStep: Equatable {
-    /// First sentence of the step.
+    /// First sentence of the numbered line.
     var title: String
-    /// The rest of the step, if any.
+    /// The rest of the numbered line, then the bullets listed under it, one per line.
     var detail: String
 }
 
@@ -26,8 +26,6 @@ struct ParsedRecipe: Equatable {
     var title: String?
     var ingredients: [ParsedIngredient] = []
     var steps: [ParsedStep] = []
-    /// Text under a "Note" header, and anything left after the last numbered step.
+    /// Text under a "Note" header, and every other line that is not an ingredient, a step or a title.
     var note: [String] = []
-    /// Lines that were neither an ingredient, a step, nor a note, so nothing is dropped silently.
-    var ignoredLines: [String] = []
 }

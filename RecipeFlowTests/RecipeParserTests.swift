@@ -4,6 +4,7 @@
 //
 
 import Testing
+import Foundation
 @testable import RecipeFlow
 
 struct RecipeParserTests {
@@ -82,7 +83,7 @@ struct RecipeParserTests {
         let recipe = RecipeParser.parse(tangzhong)
         #expect(recipe.steps.count == 11)
         #expect(recipe.ingredients.count == 12)
-        #expect(recipe.ignoredLines.isEmpty)
+        #expect(recipe.note.isEmpty)
     }
 
     @Test func tangzhongIngredientsKeepQuantityUnitAndGroup() {
@@ -179,7 +180,7 @@ struct RecipeParserTests {
 
     // MARK: Layout variations
 
-    @Test func unnumberedSentencesUnderDirectionsAreNotSteps() {
+    @Test func unnumberedSentencesUnderDirectionsGoToTheNote() {
         let recipe = RecipeParser.parse("""
         Ingredients
         2 slices bread
@@ -191,8 +192,7 @@ struct RecipeParserTests {
         """)
         #expect(recipe.ingredients.count == 2)
         #expect(recipe.steps.isEmpty)
-        #expect(recipe.note.isEmpty)
-        #expect(recipe.ignoredLines == ["Toast the bread.", "Spread the butter on top."])
+        #expect(recipe.note == ["Toast the bread.", "Spread the butter on top."])
     }
 
     @Test func noHeadersAtAll() {
@@ -311,7 +311,7 @@ struct RecipeParserTests {
         1. Bake it.
         """)
         #expect(recipe.steps.map(\.title) == ["Bake it"])
-        #expect(recipe.ignoredLines == ["Mix the flour."])
+        #expect(recipe.note == ["Mix the flour."])
     }
 
     @Test func numberingNeedNotStartAtOne() {
@@ -413,6 +413,108 @@ struct RecipeParserTests {
         #expect(RecipeParser.parse(tangzhongFromOCR).note.isEmpty)
     }
 
+    // MARK: Bullets belong to their numbered step
+
+    /// What the OCR returned for a screenshot of a chat answer: numbered headings with bullets under each.
+    private let bulletedRecipeFromOCR = """
+    1. Roast the Garlic
+    • Preheat: Set your oven to 375°F (190°C).
+    • Prep: Slice just the tips off the 5 garlic bulbs to expose the cloves, and peel away any
+    loose outer papery skin.
+    • Roast: Wrap the bulbs tightly in aluminum foil and place them in the oven. Roast for
+    about 1.5 hours until soft and caramelized.
+    2. Layer 1: Brown the Meat
+    • Heat the pan: Drizzle oil into a skillet and heat it until very hot.
+    • Sear: Add the 100g ground beef and 100g ground pork. Immediately sprinkle with 2
+    pinches of kosher salt (about 2g) to draw out moisture and season the meat.
+    • Brown: Stir quickly and mash the meat into tiny chunks so it browns rather than
+    steams. Once fully cooked and browned, season with black pepper (adding it at the
+    end prevents burning).
+    • Transfer: Scoop the meat into your main soup/sauce pot, leaving all oils and browned
+    bits behind. Do not wash the pan.
+    3. Layer 2: Caramelize & Deglaze the Onions
+    • Sauté: Drizzle a little more oil into the same hot pan and add the thinly sliced onion.
+    • Season: Immediately add 2 pinches of kosher salt and 2 pinches of sugar (a 1:1
+    ratio). Cook until the onions soften and take on a deep brown color.
+    • Deglaze: Pour a splash of water into the pan. As it bubbles and evaporates, use your
+    spatula to scrape up all the browned bits (fond) stuck to the bottom. Once the liquid is
+    mostly gone, transfer the onions and scraped bits into the main pot with the meat.
+    """
+
+    @Test func onlyTheNumberedLinesAreStepsAndBulletsStayInside() {
+        let recipe = RecipeParser.parse(bulletedRecipeFromOCR)
+        #expect(recipe.steps.map(\.title) == ["Roast the Garlic", "Layer 1: Brown the Meat", "Layer 2: Caramelize & Deglaze the Onions"])
+        #expect(recipe.ingredients.isEmpty)
+        #expect(recipe.note.isEmpty)
+    }
+
+    @Test func eachBulletIsOneLineOfItsStepsDetail() {
+        let steps = RecipeParser.parse(bulletedRecipeFromOCR).steps
+        let lines = steps.map { $0.detail.components(separatedBy: "\n") }
+        #expect(lines.map(\.count) == [3, 4, 3])
+        #expect(lines[0][0] == "• Preheat: Set your oven to 375°F (190°C).")
+        // A bullet that wrapped onto the next line is one line again.
+        #expect(lines[0][1] == "• Prep: Slice just the tips off the 5 garlic bulbs to expose the cloves, and peel away any loose outer papery skin.")
+        #expect(lines[1][3] == "• Transfer: Scoop the meat into your main soup/sauce pot, leaving all oils and browned bits behind. Do not wash the pan.")
+    }
+
+    @Test func bulletsAfterTheLastStepStillBelongToIt() {
+        let last = RecipeParser.parse(bulletedRecipeFromOCR).steps[2]
+        #expect(last.detail.hasPrefix("• Sauté: Drizzle a little more oil"))
+        #expect(last.detail.hasSuffix("transfer the onions and scraped bits into the main pot with the meat."))
+    }
+
+    @Test func hyphenAndAsteriskBulletsWork() {
+        let recipe = RecipeParser.parse("1. Prepare\n- Chop the onion.\n* Slice the garlic.\n2. Cook\n- Fry it.")
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.steps[0].detail == "• Chop the onion.\n• Slice the garlic.")
+        #expect(recipe.steps[1].detail == "• Fry it.")
+    }
+
+    @Test func aBulletSymbolOnItsOwnLineMarksTheNextLine() {
+        let recipe = RecipeParser.parse("1. Prepare\n•\nChop the onion.\n•\nSlice the garlic.\n2. Cook")
+        #expect(recipe.steps[0].detail == "• Chop the onion.\n• Slice the garlic.")
+    }
+
+    @Test func boldMarkersFromCopiedChatTextAreRemoved() {
+        let recipe = RecipeParser.parse("1. Roast\n* **Preheat:** Set your oven to **375°F**.")
+        #expect(recipe.steps[0].detail == "• Preheat: Set your oven to 375°F.")
+    }
+
+    @Test func aNumberedLineWithTextAndBulletsKeepsBoth() {
+        let recipe = RecipeParser.parse("1. Mix the flour. Stir well.\n• Use a whisk.\n• Break up lumps.")
+        #expect(recipe.steps[0].title == "Mix the flour")
+        #expect(recipe.steps[0].detail == "Stir well.\n• Use a whisk.\n• Break up lumps.")
+    }
+
+    @Test func aPlainLineAfterTheLastBulletEndsTheStepAndStartsTheNote() {
+        let recipe = RecipeParser.parse("1. Mix\n• Stir the batter.\nEnjoy it warm.")
+        #expect(recipe.steps[0].detail == "• Stir the batter.")
+        #expect(recipe.note == ["Enjoy it warm."])
+    }
+
+    // MARK: Everything else goes to the note
+
+    @Test func textBeforeTheIngredientsGoesToTheNote() {
+        let recipe = RecipeParser.parse("""
+        Grandma's Soup
+        A family favourite since 1972.
+        Ingredients
+        2 cups stock
+        1. Boil.
+        """)
+        #expect(recipe.title == "Grandma's Soup")
+        #expect(recipe.note == ["A family favourite since 1972."])
+        #expect(recipe.ingredients.count == 1)
+        #expect(recipe.steps.count == 1)
+    }
+
+    @Test func aSecondLineBeforeAnySectionIsNotATitleSoItGoesToTheNote() {
+        let recipe = RecipeParser.parse("Soup\nBest on cold days\nIngredients\n2 cups stock")
+        #expect(recipe.title == "Soup")
+        #expect(recipe.note == ["Best on cold days"])
+    }
+
     // MARK: Korean
 
     @Test func koreanRecipe() {
@@ -463,7 +565,7 @@ struct RecipeParserTests {
 
     // MARK: Unrelated text
 
-    @Test func noiseLinesAreSetAside() {
+    @Test func adsLinksAndPageNumbersAreDropped() {
         let recipe = RecipeParser.parse("""
         Advertisement
         Ingredients
@@ -475,7 +577,7 @@ struct RecipeParserTests {
         """)
         #expect(recipe.ingredients.count == 1)
         #expect(recipe.steps.count == 1)
-        #expect(recipe.ignoredLines == ["Advertisement", "www.example.com/pizza", "12"])
+        #expect(recipe.note.isEmpty, "links belong in the source link field, not the note")
     }
 
     @Test func proseGivesNothing() {
@@ -486,7 +588,7 @@ struct RecipeParserTests {
         #expect(recipe.ingredients.isEmpty)
         #expect(recipe.steps.isEmpty)
         #expect(recipe.title == nil)
-        #expect(recipe.ignoredLines.count == 2)
+        #expect(recipe.note.count == 2)
     }
 
     @Test func emptyAndWhitespaceInput() {

@@ -53,13 +53,12 @@ struct RecipePersistenceTests {
         #expect(steps[0].detail == "Stir until thick.")
     }
 
-    @Test func savesTitleRawTextAndIgnoredLines() throws {
+    @Test func savesTitleAndRawText() throws {
         let container = PersistenceController.previewContainer(withSample: false)
         let recipe = Recipe.create(from: text, in: container.mainContext)
 
         #expect(recipe.title == "Tangzhong Bread")
         #expect(recipe.rawText == text)
-        #expect(recipe.ignoredLines == ["Advertisement"])
     }
 
     @Test func savesTheNote() throws {
@@ -118,7 +117,7 @@ struct RecipePersistenceTests {
                 for: Recipe.self, Ingredient.self, Step.self,
                 configurations: ModelConfiguration(url: storeURL)
             )
-            let recipe = Recipe.create(from: text, in: container.mainContext)
+            let recipe = Recipe.create(from: text + "\nRest overnight.", in: container.mainContext)
             recipe.sourceURL = "https://www.youtube.com/watch?v=nqsoMyxHTbc"
             try container.mainContext.save()
         }
@@ -134,7 +133,7 @@ struct RecipePersistenceTests {
         #expect(recipe.title == "Tangzhong Bread")
         #expect(recipe.sortedIngredients.map(\.group) == ["Tangzhong", "Tangzhong", nil, nil])
         #expect(recipe.sortedSteps.count == 3)
-        #expect(recipe.ignoredLines == ["Advertisement"])
+        #expect(recipe.note == "Rest overnight.")
         #expect(recipe.sourceURL == "https://www.youtube.com/watch?v=nqsoMyxHTbc")
     }
 

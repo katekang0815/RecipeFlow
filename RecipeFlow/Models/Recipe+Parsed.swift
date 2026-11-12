@@ -21,7 +21,6 @@ extension Recipe {
         let recipe = Recipe(title: parsed.title ?? untitledTitle, rawText: text)
         // Insert first: SwiftData crashes if an un-inserted model touches a to-many relationship.
         context.insert(recipe)
-        recipe.ignoredLines = parsed.ignoredLines
         recipe.note = parsed.note.joined(separator: "\n")
 
         for item in parsed.ingredients {

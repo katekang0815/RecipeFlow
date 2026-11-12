@@ -12,9 +12,8 @@ final class Recipe {
     var title: String
     var rawText: String
     var createdAt: Date
-    /// Lines the parser could not place, kept so the user can see what was skipped.
-    var ignoredLines: [String] = []
-    /// Notes from the recipe text, one per line. Empty when there were none.
+    /// Notes from the recipe text, one per line: the Note section and any line that fit nowhere else.
+    /// Empty when there were none.
     var note: String = ""
     /// Where the recipe came from, e.g. a YouTube link. Always an http(s) address.
     var sourceURL: String?

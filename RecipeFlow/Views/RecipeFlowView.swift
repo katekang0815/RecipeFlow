@@ -27,10 +27,6 @@ struct RecipeFlowView: View {
                     section("Note") { note(recipe.note) }
                 }
                 section("Source link") { sourceLink }
-
-                if !recipe.ignoredLines.isEmpty {
-                    ignored(recipe.ignoredLines)
-                }
             }
             .padding(16)
         }
@@ -209,20 +205,6 @@ struct RecipeFlowView: View {
         .padding(.leading, 16)
         .padding(.trailing, 10)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-    }
-
-    // MARK: Ignored lines
-
-    private func ignored(_ lines: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(lines.count) line\(lines.count == 1 ? "" : "s") ignored")
-                .font(.footnote.weight(.semibold))
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                Text(line).font(.footnote)
-            }
-        }
-        .foregroundStyle(Theme.ink.opacity(0.6))
-        .accessibilityIdentifier("ignoredLines")
     }
 }
 
