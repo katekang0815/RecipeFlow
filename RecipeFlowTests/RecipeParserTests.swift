@@ -179,7 +179,7 @@ struct RecipeParserTests {
 
     // MARK: Layout variations
 
-    @Test func ingredientsFirstThenUnnumberedSteps() {
+    @Test func unnumberedSentencesUnderDirectionsAreNotSteps() {
         let recipe = RecipeParser.parse("""
         Ingredients
         2 slices bread
@@ -190,7 +190,9 @@ struct RecipeParserTests {
         Spread the butter on top.
         """)
         #expect(recipe.ingredients.count == 2)
-        #expect(recipe.steps.map(\.title) == ["Toast the bread", "Spread the butter on top"])
+        #expect(recipe.steps.isEmpty)
+        #expect(recipe.note.isEmpty)
+        #expect(recipe.ignoredLines == ["Toast the bread.", "Spread the butter on top."])
     }
 
     @Test func noHeadersAtAll() {
@@ -258,6 +260,157 @@ struct RecipeParserTests {
         #expect(recipe.steps.count == 2)
         #expect(recipe.ingredients.isEmpty)
         #expect(recipe.steps[0].title == "Let the dough rest for 40 minutes to an hour")
+    }
+
+    // MARK: Ingredients section
+
+    @Test func ingredientsAreEverythingBetweenTheHeaderAndTheFirstStep() {
+        let recipe = RecipeParser.parse("""
+        Ingredients
+        2 cups flour
+        1 cup sugar
+        pinch of love
+        1. Mix.
+        2. Bake.
+        """)
+        #expect(recipe.ingredients.map(\.name) == ["flour", "sugar", "pinch of love"])
+        #expect(recipe.steps.count == 2)
+        // The header itself is not an ingredient.
+        #expect(!recipe.ingredients.contains { $0.name.lowercased() == "ingredients" })
+    }
+
+    @Test func koreanHeaderIsNotAnIngredientEither() {
+        let recipe = RecipeParser.parse("재료\n밥 2공기\n김치 1컵\n1. 볶는다.\n2. 먹는다.")
+        #expect(recipe.ingredients.map(\.name) == ["밥", "김치"])
+        #expect(recipe.steps.count == 2)
+    }
+
+    @Test func everythingUnderTheHeaderIsAnIngredientWhenTheStepsCameFirst() {
+        let recipe = RecipeParser.parse("""
+        1. Mix.
+        2. Bake.
+        Ingredients
+        2 cups flour
+        salt
+        a long line that is not really an ingredient but sits under the header anyway
+        """)
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.ingredients.count == 3)
+        #expect(recipe.ingredients[2].name == "a long line that is not really an ingredient but sits under the header anyway")
+        #expect(recipe.note.isEmpty)
+    }
+
+    // MARK: Steps section
+
+    @Test func stepsMustBeNumbered() {
+        let recipe = RecipeParser.parse("""
+        Ingredients
+        2 cups flour
+        Steps
+        Mix the flour.
+        1. Bake it.
+        """)
+        #expect(recipe.steps.map(\.title) == ["Bake it"])
+        #expect(recipe.ignoredLines == ["Mix the flour."])
+    }
+
+    @Test func numberingNeedNotStartAtOne() {
+        // A cropped photo can begin in the middle of a recipe.
+        let recipe = RecipeParser.parse("9. Mix.\n10. Bake.\n11. Cool.")
+        #expect(recipe.steps.map(\.title) == ["Mix", "Bake", "Cool"])
+    }
+
+    @Test func aSecondListThatRestartsAtOneContinuesTheSteps() {
+        let recipe = RecipeParser.parse("""
+        Dough
+        1. Mix flour.
+        2. Rest it.
+        Filling
+        1. Chop apples.
+        2. Cook them.
+        """)
+        #expect(recipe.steps.map(\.title) == ["Mix flour", "Rest it", "Chop apples", "Cook them"])
+    }
+
+    @Test func aNumberThatGoesBackwardsIsNotAStep() {
+        let recipe = RecipeParser.parse("1. Mix.\n2. Bake.\n3. Cool.\n2. stray line.")
+        #expect(recipe.steps.map(\.title) == ["Mix", "Bake", "Cool"])
+    }
+
+    @Test func linesBetweenTwoNumberedStepsBelongToTheEarlierOne() {
+        let recipe = RecipeParser.parse("""
+        1. Mix the flour.
+        Then wait a little.
+        Keep it warm.
+        2. Bake it.
+        """)
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.steps[0].detail == "Then wait a little. Keep it warm.")
+        #expect(recipe.note.isEmpty)
+    }
+
+    // MARK: Note section
+
+    @Test func textAfterTheLastNumberedStepIsTheNote() {
+        let recipe = RecipeParser.parse("""
+        1. Mix.
+        2. Bake for 20 minutes.
+        Keep leftovers in the fridge.
+        Eat within three days.
+        """)
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.note == ["Keep leftovers in the fridge.", "Eat within three days."])
+        #expect(recipe.steps[1].title == "Bake for 20 minutes")
+    }
+
+    @Test func aWrappedLastStepIsNotANote() {
+        let recipe = RecipeParser.parse("1. Mix.\n2. Bake it in the oven for\n20 minutes.")
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.steps[1].title == "Bake it in the oven for 20 minutes")
+        #expect(recipe.note.isEmpty)
+    }
+
+    @Test func anExplicitNoteHeaderStartsTheNote() {
+        let recipe = RecipeParser.parse("""
+        1. Mix.
+        2. Bake.
+        Notes
+        Rest the dough overnight.
+        1. this numbered line stays in the note
+        """)
+        #expect(recipe.steps.count == 2)
+        #expect(recipe.note == ["Rest the dough overnight.", "1. this numbered line stays in the note"])
+    }
+
+    @Test func noteHeaderWithTextOnTheSameLine() {
+        let recipe = RecipeParser.parse("1. Mix.\n2. Bake.\nNote: rest the dough overnight")
+        #expect(recipe.note == ["rest the dough overnight"])
+    }
+
+    @Test func koreanNoteHeaders() {
+        let recipe = RecipeParser.parse("1. 볶는다.\n2. 먹는다.\n참고\n밥은 식힌 것을 쓴다.")
+        #expect(recipe.note == ["밥은 식힌 것을 쓴다."])
+        let memo = RecipeParser.parse("1. 볶는다.\n2. 먹는다.\n메모: 소금은 취향껏")
+        #expect(memo.note == ["소금은 취향껏"])
+    }
+
+    @Test func ingredientsAfterANoteStillWork() {
+        let recipe = RecipeParser.parse("""
+        1. Mix.
+        2. Bake.
+        Note: rest the dough
+        Ingredients
+        2 cups flour
+        1 cup water
+        """)
+        #expect(recipe.note == ["rest the dough"])
+        #expect(recipe.ingredients.count == 2)
+        #expect(recipe.steps.count == 2)
+    }
+
+    @Test func tangzhongHasNoNote() {
+        #expect(RecipeParser.parse(tangzhong).note.isEmpty)
+        #expect(RecipeParser.parse(tangzhongFromOCR).note.isEmpty)
     }
 
     // MARK: Korean

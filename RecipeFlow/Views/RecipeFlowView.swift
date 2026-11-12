@@ -23,6 +23,9 @@ struct RecipeFlowView: View {
 
                 section("Ingredients") { ingredients(recipe.sortedIngredients) }
                 section("Steps") { steps(recipe.sortedSteps) }
+                if !recipe.note.isEmpty {
+                    section("Note") { note(recipe.note) }
+                }
                 section("Source link") { sourceLink }
 
                 if !recipe.ignoredLines.isEmpty {
@@ -156,6 +159,17 @@ struct RecipeFlowView: View {
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
+    }
+
+    // MARK: Note
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(Theme.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+            .accessibilityIdentifier("noteText")
     }
 
     // MARK: Source link

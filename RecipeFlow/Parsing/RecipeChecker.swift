@@ -31,7 +31,7 @@ extension RecipeCheck.Issue {
         case .noIngredients:
             "No ingredients were found. The recipe will have steps only."
         case .noSteps:
-            "No steps were found. The recipe will have ingredients only."
+            "No numbered steps were found. Start each step with a number, like 1. 2. 3. The recipe will have ingredients only."
         case .fewItems(let ingredients, let steps):
             "Only \(Self.count(ingredients, "ingredient")) and \(Self.count(steps, "step")) were found."
         }

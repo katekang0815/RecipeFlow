@@ -73,7 +73,8 @@ struct RecipeCheckerTests {
     }
 
     @Test func partialMessagesSayWhatIsMissing() {
-        #expect(RecipeCheck.Issue.noSteps.message.contains("No steps"))
+        #expect(RecipeCheck.Issue.noSteps.message.contains("No numbered steps"))
+        #expect(RecipeCheck.Issue.noSteps.message.contains("1. 2. 3."))
         #expect(RecipeCheck.Issue.noIngredients.message.contains("No ingredients"))
         #expect(RecipeCheck.Issue.fewItems(ingredients: 1, steps: 2).message
                 == "Only 1 ingredient and 2 steps were found.")

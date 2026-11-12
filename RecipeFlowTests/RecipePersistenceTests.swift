@@ -62,6 +62,14 @@ struct RecipePersistenceTests {
         #expect(recipe.ignoredLines == ["Advertisement"])
     }
 
+    @Test func savesTheNote() throws {
+        let container = PersistenceController.previewContainer(withSample: false)
+        let recipe = Recipe.create(from: text + "\nKeep it in the fridge.\nEat within three days.", in: container.mainContext)
+        #expect(recipe.steps.count == 3)
+        #expect(recipe.note == "Keep it in the fridge.\nEat within three days.")
+        #expect(Recipe.create(from: text, in: container.mainContext).note == "")
+    }
+
     @Test func recipeWithoutATitleIsUntitled() throws {
         let container = PersistenceController.previewContainer(withSample: false)
         let recipe = Recipe.create(from: "Ingredients\n2 cups flour\nDirections\n1. Mix.", in: container.mainContext)

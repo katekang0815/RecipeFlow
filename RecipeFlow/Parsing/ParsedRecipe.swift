@@ -26,6 +26,8 @@ struct ParsedRecipe: Equatable {
     var title: String?
     var ingredients: [ParsedIngredient] = []
     var steps: [ParsedStep] = []
-    /// Lines that were neither an ingredient nor a step, so nothing is dropped silently.
+    /// Text under a "Note" header, and anything left after the last numbered step.
+    var note: [String] = []
+    /// Lines that were neither an ingredient, a step, nor a note, so nothing is dropped silently.
     var ignoredLines: [String] = []
 }

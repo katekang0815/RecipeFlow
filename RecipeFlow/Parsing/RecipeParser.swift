@@ -5,7 +5,13 @@
 
 import Foundation
 
-/// Splits organized recipe text (English or Korean) into ingredients and steps with rules only.
+/// Splits organized recipe text (English or Korean) into ingredients, steps and a note with rules only.
+///
+/// - Ingredients: everything under an "Ingredients" / "재료" header, up to where the steps start.
+///   When the ingredients come after the steps, everything below the header.
+/// - Steps: only numbered lines, normally 1, 2, 3 in order. Lines between two numbered steps
+///   belong to the earlier one.
+/// - Note: an explicit "Note" section, and anything left over after the last numbered step ends.
 enum RecipeParser {
     static func parse(_ text: String) -> ParsedRecipe {
         var state = ParserState(lines: normalizedLines(text))
@@ -26,25 +32,29 @@ enum RecipeParser {
 
 // MARK: - State machine
 
-/// Walks the lines top to bottom. Headers and numbering switch between the ingredient and
-/// step sections, so the order of the sections in the text does not matter.
+/// Walks the lines top to bottom. Headers and numbering switch between the sections,
+/// so the order of the sections in the text does not matter.
 private struct ParserState {
-    enum Section { case none, ingredients, steps }
+    enum Section { case none, ingredients, steps, note }
 
     let lines: [String]
-    /// When steps are numbered, an unnumbered line is a wrapped continuation of the previous step.
-    let hasNumberedSteps: Bool
+    /// Line index to step text, for the numbered lines that count as steps.
+    let stepLines: [Int: String]
+    /// Past this line no numbered step follows, so leftover text is a note, not a wrapped line.
+    let lastStepLine: Int?
 
     var section = Section.none
     var group: String?
     var title: String?
     var ingredients: [ParsedIngredient] = []
     var stepTexts: [String] = []
+    var noteLines: [String] = []
     var ignored: [String] = []
 
     init(lines: [String]) {
         self.lines = lines
-        hasNumberedSteps = lines.contains { Patterns.numberedStep($0) != nil }
+        stepLines = Patterns.stepLines(in: lines)
+        lastStepLine = stepLines.keys.max()
     }
 
     var result: ParsedRecipe {
@@ -52,12 +62,13 @@ private struct ParserState {
             title: title,
             ingredients: ingredients,
             steps: stepTexts.filter { !$0.isEmpty }.map(Patterns.makeStep),
+            note: noteLines,
             ignoredLines: ignored
         )
     }
 
     mutating func run() {
-        for line in lines {
+        for (index, line) in lines.enumerated() {
             if line.isEmpty {
                 if section == .ingredients { group = nil }
                 continue
@@ -66,18 +77,12 @@ private struct ParserState {
                 ignored.append(line)
                 continue
             }
-            handle(line)
+            handle(line, at: index)
         }
     }
 
-    private mutating func handle(_ line: String) {
-        if let text = Patterns.numberedStep(line) {
-            // "1. 2 cups flour" in an ingredient list is still an ingredient.
-            if section == .ingredients,
-               let item = Patterns.ingredient(text, allowTrailing: false) {
-                add(item)
-                return
-            }
+    private mutating func handle(_ line: String, at index: Int?) {
+        if let index, let text = stepLines[index] {
             section = .steps
             stepTexts.append(text)
             return
@@ -86,27 +91,25 @@ private struct ParserState {
         if let (newSection, rest) = Patterns.header(line) {
             section = newSection
             group = nil
-            if let rest { handle(rest) }
+            if let rest { handle(rest, at: nil) }
             return
         }
 
         switch section {
         case .none: handleUnsectioned(line)
         case .ingredients: handleIngredient(line)
-        case .steps: handleStep(line)
+        case .steps: handleStep(line, at: index)
+        case .note: noteLines.append(Patterns.bulletText(line) ?? line)
         }
     }
 
     private mutating func handleUnsectioned(_ line: String) {
-        let bullet = Patterns.bulletText(line)
-        let body = bullet ?? line
+        let body = Patterns.bulletText(line) ?? line
 
         if let item = Patterns.strictIngredient(body) {
+            // An ingredient list that has no header.
             section = .ingredients
             add(item)
-        } else if bullet != nil {
-            section = .steps
-            stepTexts.append(body)
         } else if title == nil, ingredients.isEmpty, stepTexts.isEmpty,
                   line.count <= 60, !Patterns.endsSentence(line) {
             title = line
@@ -115,36 +118,47 @@ private struct ParserState {
         }
     }
 
+    /// Everything under the ingredients header is an ingredient, even a line with no amount.
     private mutating func handleIngredient(_ line: String) {
         let body = Patterns.bulletText(line) ?? line
 
         if let name = Patterns.groupName(body) {
             group = name
-        } else if let item = Patterns.ingredient(body, allowNameOnly: true) {
-            add(item)
-        } else if Patterns.endsSentence(body), Patterns.wordCount(body) >= 4 {
-            // A real sentence after the list: the steps start here without a header.
-            section = .steps
-            stepTexts.append(body)
         } else {
-            ignored.append(line)
+            add(Patterns.ingredient(body, allowNameOnly: true)
+                ?? ParsedIngredient(quantity: "", unit: "", name: body))
         }
     }
 
-    private mutating func handleStep(_ line: String) {
-        let bullet = Patterns.bulletText(line)
-        let previousDone = Patterns.endsSentence(stepTexts.last ?? "")
+    /// An unnumbered line in the steps section: a wrapped part of a step, or what comes after the steps.
+    private mutating func handleStep(_ line: String, at index: Int?) {
+        guard let current = stepTexts.last else {
+            // Under a "Steps" header but before the first numbered step: unnumbered text is not a step.
+            ignored.append(line)
+            return
+        }
 
-        if bullet == nil, previousDone, let item = Patterns.strictIngredient(line) {
+        // Another numbered step follows, so this line belongs to the step above it.
+        if let index, let lastStepLine, index < lastStepLine {
+            appendToLastStep(line)
+            return
+        }
+
+        if !Patterns.endsSentence(current) {
+            appendToLastStep(line)  // the last step wrapped onto this line
+        } else if let item = Patterns.strictIngredient(line) {
             // Steps first, ingredients after, with no header between them.
             section = .ingredients
             group = nil
             add(item)
-        } else if let bullet {
-            stepTexts.append(bullet)
-        } else if stepTexts.isEmpty || (!hasNumberedSteps && previousDone) {
-            stepTexts.append(line)
-        } else if stepTexts[stepTexts.count - 1].isEmpty {
+        } else {
+            section = .note
+            noteLines.append(line)
+        }
+    }
+
+    private mutating func appendToLastStep(_ line: String) {
+        if stepTexts[stepTexts.count - 1].isEmpty {
             stepTexts[stepTexts.count - 1] = line
         } else {
             stepTexts[stepTexts.count - 1] += " " + line
@@ -177,6 +191,11 @@ private enum Patterns {
         "directions", "direction", "instructions", "instruction", "method", "steps", "step",
         "preparation", "procedure", "how to make",
         "만드는 법", "만드는법", "만드는 방법", "조리법", "조리 방법", "조리 순서", "순서", "방법",
+    ]
+
+    static let noteHeaders: Set<String> = [
+        "note", "notes", "memo", "tip", "tips",
+        "참고", "참고사항", "메모", "비고", "팁",
     ]
 
     /// Words that on their own label a sub-recipe, e.g. "양념" above its ingredients.
@@ -259,11 +278,41 @@ private enum Patterns {
 
     // MARK: Steps
 
-    /// The text after a step number ("1.", "2)", "Step 3:", "①"), or nil if the line is not numbered.
-    static func numberedStep(_ line: String) -> String? {
-        if let match = line.wholeMatch(of: stepNumber) { return group(match, 2) }
-        if let match = line.wholeMatch(of: circledNumber) { return group(match, 2) }
+    /// The number and text of a numbered line ("1.", "2)", "Step 3:", "①"), or nil if it is not numbered.
+    static func numberedStep(_ line: String) -> (number: Int, text: String)? {
+        if let match = line.wholeMatch(of: stepNumber),
+           let digits = group(match, 1), let number = Int(digits), let text = group(match, 2) {
+            return (number, text)
+        }
+        if let match = line.wholeMatch(of: circledNumber),
+           let circled = group(match, 1)?.unicodeScalars.first, let text = group(match, 2) {
+            return (Int(circled.value) - 0x2460 + 1, text)
+        }
         return nil
+    }
+
+    /// The numbered lines that count as steps: each number is higher than the one before it,
+    /// or a restart at 1 (a second list for another part of the recipe). The list does not have
+    /// to begin at 1, since a cropped photo can start mid-recipe. A numbered line that goes
+    /// backwards is left as plain text. Numbered lines inside a note, or numbered ingredients
+    /// ("1. 2 cups flour"), are not steps.
+    static func stepLines(in lines: [String]) -> [Int: String] {
+        var result: [Int: String] = [:]
+        var previous: Int?
+        var section = ParserState.Section.none
+
+        for (index, line) in lines.enumerated() where !line.isEmpty && !isNoise(line) {
+            guard let (number, text) = numberedStep(line) else {
+                if let (newSection, _) = header(line) { section = newSection }
+                continue
+            }
+            if section == .note { continue }
+            if section == .ingredients, ingredient(text, allowTrailing: false) != nil { continue }
+            if let previous, number <= previous, number != 1 { continue }
+            result[index] = text
+            previous = number
+        }
+        return result
     }
 
     static func bulletText(_ line: String) -> String? {
@@ -296,6 +345,7 @@ private enum Patterns {
     private static func section(forKey key: String) -> ParserState.Section? {
         if ingredientHeaders.contains(key) { return .ingredients }
         if stepHeaders.contains(key) { return .steps }
+        if noteHeaders.contains(key) { return .note }
         return nil
     }
 

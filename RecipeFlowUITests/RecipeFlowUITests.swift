@@ -96,6 +96,7 @@ final class RecipeFlowUITests: XCTestCase {
         Directions
         1. Mix flour with water. Stir until thick.
         2. Refrigerate for 6 hours.
+        Rest the dough overnight.
         """)
         app.buttons["Create recipe"].tap()
 
@@ -109,6 +110,10 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
+        // Text left after the last numbered step goes to the Note section.
+        XCTAssertTrue(app.staticTexts["Note"].exists, "note heading")
+        XCTAssertTrue(app.staticTexts["Rest the dough overnight."].exists)
+        XCTAssertFalse(app.staticTexts["1 ingredient"].exists)
         snap(app, "5-split-recipe")
 
         // Back on the home screen the saved recipe is listed, and it opens again.
