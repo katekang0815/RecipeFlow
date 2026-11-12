@@ -124,6 +124,61 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testSourceLinkCanBeAddedEditedAndRemoved() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast the bread.\n2. Spread the butter.")
+        app.buttons["Create recipe"].tap()
+        XCTAssertTrue(app.staticTexts["2 slices bread"].waitForExistence(timeout: 5))
+        snap(app, "8-no-source-link")
+
+        // No link yet, so the + is shown and not the pencil.
+        let add = app.buttons["addSourceLinkButton"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["editSourceLinkButton"].exists)
+        add.tap()
+
+        // The Simulator has no camera, so only pasting is offered.
+        let field = app.textFields["sourceLinkField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["takeLinkPhotoButton"].exists)
+        let save = app.buttons["saveSourceLinkButton"]
+        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+
+        field.tap()
+        field.typeText("hello")
+        XCTAssertFalse(save.isEnabled)
+        XCTAssertTrue(app.staticTexts["sourceLinkMessage"].exists)
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+        field.typeText("youtube.com/watch?v=abc")
+        XCTAssertTrue(save.isEnabled)
+        snap(app, "9-add-source-link")
+        save.tap()
+
+        // Saved: the link is shown, and the pencil replaces the +.
+        let link = app.descendants(matching: .any)["sourceLink"]
+        XCTAssertTrue(link.waitForExistence(timeout: 5))
+        XCTAssertTrue(link.label.contains("youtube.com/watch?v=abc"))
+        XCTAssertFalse(app.buttons["addSourceLinkButton"].exists)
+        snap(app, "10-source-link-saved")
+
+        // Edit shows the saved link, and Remove takes it away again.
+        app.buttons["editSourceLinkButton"].tap()
+        let editField = app.textFields["sourceLinkField"]
+        XCTAssertTrue(editField.waitForExistence(timeout: 5))
+        XCTAssertTrue((editField.value as? String ?? "").contains("youtube.com/watch?v=abc"))
+        app.buttons["removeSourceLinkButton"].tap()
+        XCTAssertTrue(app.buttons["addSourceLinkButton"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.descendants(matching: .any)["sourceLink"].exists)
+    }
+
+    @MainActor
     func testSwipeToDeleteRemovesASavedRecipe() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]

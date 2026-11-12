@@ -14,6 +14,8 @@ final class Recipe {
     var createdAt: Date
     /// Lines the parser could not place, kept so the user can see what was skipped.
     var ignoredLines: [String] = []
+    /// Where the recipe came from, e.g. a YouTube link. Always an http(s) address.
+    var sourceURL: String?
 
     @Relationship(deleteRule: .cascade, inverse: \Ingredient.recipe)
     var ingredients: [Ingredient] = []

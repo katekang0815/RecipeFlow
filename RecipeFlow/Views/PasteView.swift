@@ -5,7 +5,6 @@
 
 import SwiftUI
 import PhotosUI
-import AVFoundation
 
 struct PasteView: View {
     var onCreate: (String) -> Void
@@ -38,7 +37,9 @@ struct PasteView: View {
 
             Menu {
                 if CameraPicker.isAvailable {
-                    Button { requestCamera() } label: {
+                    Button {
+                        CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
+                    } label: {
                         Label("Take photo", systemImage: "camera")
                     }
                 }
@@ -91,16 +92,7 @@ struct PasteView: View {
         } message: {
             Text(warning)
         }
-        .alert("Camera access is off", isPresented: $showCameraDenied) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Allow camera access in Settings to take a photo of a recipe.")
-        }
+        .cameraDeniedAlert(isPresented: $showCameraDenied)
     }
 
     /// Only organized recipes get through. Text with no recipe in it is turned away,
@@ -114,22 +106,6 @@ struct PasteView: View {
             showWarning = true
         case .rejected:
             checkMessage = RecipeCheck.rejectedMessage
-        }
-    }
-
-    /// iOS asks for permission the first time; after a "no" the user has to use Settings.
-    private func requestCamera() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            showCamera = true
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    if granted { showCamera = true } else { showCameraDenied = true }
-                }
-            }
-        default:
-            showCameraDenied = true
         }
     }
 

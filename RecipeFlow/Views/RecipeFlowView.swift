@@ -11,6 +11,8 @@ import SwiftData
 struct RecipeFlowView: View {
     var recipe: Recipe
 
+    @State private var showLinkEditor = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -21,6 +23,7 @@ struct RecipeFlowView: View {
 
                 section("Ingredients") { ingredients(recipe.sortedIngredients) }
                 section("Steps") { steps(recipe.sortedSteps) }
+                section("Source link") { sourceLink }
 
                 if !recipe.ignoredLines.isEmpty {
                     ignored(recipe.ignoredLines)
@@ -32,6 +35,13 @@ struct RecipeFlowView: View {
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
+        .sheet(isPresented: $showLinkEditor) {
+            SourceLinkEditor(
+                current: recipe.sourceURL,
+                onSave: { recipe.sourceURL = $0 },
+                onRemove: { recipe.sourceURL = nil }
+            )
+        }
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -119,7 +129,8 @@ struct RecipeFlowView: View {
         if items.isEmpty {
             placeholder("No steps found")
         } else {
-            VStack(spacing: 12) {
+            // One card for every step, like the ingredients card above it.
+            VStack(alignment: .leading, spacing: 18) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 12) {
                         Text("\(index + 1)")
@@ -139,11 +150,51 @@ struct RecipeFlowView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
+    }
+
+    // MARK: Source link
+
+    /// One line like the ingredient card: the link on the left, + (add) or the pencil (edit) on the right.
+    private var sourceLink: some View {
+        let saved = recipe.sourceURL.flatMap(SourceLink.url(from:))
+
+        return HStack(spacing: 12) {
+            if let saved {
+                Link(destination: saved) {
+                    Text(saved.absoluteString)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .underline()
+                        .foregroundStyle(Theme.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .accessibilityIdentifier("sourceLink")
+            } else {
+                Text("Add a source link")
+                    .foregroundStyle(Theme.ink.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button { showLinkEditor = true } label: {
+                Image(systemName: saved == nil ? "plus" : "pencil")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Theme.ink))
+            }
+            .accessibilityLabel(saved == nil ? "Add source link" : "Edit source link")
+            .accessibilityIdentifier(saved == nil ? "addSourceLinkButton" : "editSourceLinkButton")
+        }
+        .padding(.vertical, 10)
+        .padding(.leading, 16)
+        .padding(.trailing, 10)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
     }
 
     // MARK: Ignored lines

@@ -110,7 +110,8 @@ struct RecipePersistenceTests {
                 for: Recipe.self, Ingredient.self, Step.self,
                 configurations: ModelConfiguration(url: storeURL)
             )
-            Recipe.create(from: text, in: container.mainContext)
+            let recipe = Recipe.create(from: text, in: container.mainContext)
+            recipe.sourceURL = "https://www.youtube.com/watch?v=nqsoMyxHTbc"
             try container.mainContext.save()
         }
 
@@ -126,5 +127,11 @@ struct RecipePersistenceTests {
         #expect(recipe.sortedIngredients.map(\.group) == ["Tangzhong", "Tangzhong", nil, nil])
         #expect(recipe.sortedSteps.count == 3)
         #expect(recipe.ignoredLines == ["Advertisement"])
+        #expect(recipe.sourceURL == "https://www.youtube.com/watch?v=nqsoMyxHTbc")
+    }
+
+    @Test func newRecipeHasNoSourceLink() {
+        let container = PersistenceController.previewContainer(withSample: false)
+        #expect(Recipe.create(from: text, in: container.mainContext).sourceURL == nil)
     }
 }
