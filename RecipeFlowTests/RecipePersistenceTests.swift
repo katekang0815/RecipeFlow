@@ -69,6 +69,27 @@ struct RecipePersistenceTests {
         #expect(Recipe.create(from: text, in: container.mainContext).note == "")
     }
 
+    @Test func anIngredientsOnlyTextSavesAsARecipeWithNoSteps() throws {
+        let container = PersistenceController.previewContainer(withSample: false)
+        let recipe = Recipe.create(from: "Ingredients\n2 cups flour\n1 cup water\n3 eggs", in: container.mainContext)
+
+        #expect(recipe.sortedIngredients.map(\.name) == ["flour", "water", "eggs"])
+        #expect(recipe.steps.isEmpty)
+        #expect(recipe.note == "")
+        #expect(recipe.title == "Untitled recipe")
+        #expect(try container.mainContext.fetch(FetchDescriptor<Recipe>()).count == 1)
+    }
+
+    @Test func aStepsOnlyTextSavesAsARecipeWithNoIngredients() throws {
+        let container = PersistenceController.previewContainer(withSample: false)
+        let recipe = Recipe.create(from: "1. Mix the flour and water.\n2. Bake for 20 minutes.", in: container.mainContext)
+
+        #expect(recipe.sortedSteps.map(\.title) == ["Mix the flour and water", "Bake for 20 minutes"])
+        #expect(recipe.ingredients.isEmpty)
+        #expect(recipe.note == "")
+        #expect(try container.mainContext.fetch(FetchDescriptor<Recipe>()).count == 1)
+    }
+
     @Test func recipeWithoutATitleIsUntitled() throws {
         let container = PersistenceController.previewContainer(withSample: false)
         let recipe = Recipe.create(from: "Ingredients\n2 cups flour\nDirections\n1. Mix.", in: container.mainContext)

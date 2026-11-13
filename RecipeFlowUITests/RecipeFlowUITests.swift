@@ -167,6 +167,92 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testIngredientsOnlyTextCanCreateARecipe() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        app.buttons["Create recipe"].tap()
+
+        // Part of a recipe: the app says what is missing, then lets the user continue.
+        let alert = app.alerts["Check your recipe"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "No numbered steps")).firstMatch.exists)
+        snap(app, "12-ingredients-only-warning")
+        alert.buttons["Create anyway"].tap()
+
+        XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["3 eggs"].exists)
+        XCTAssertTrue(app.staticTexts["No steps found"].exists)
+        XCTAssertFalse(app.staticTexts["No ingredients found"].exists)
+        snap(app, "13-ingredients-only-recipe")
+
+        // It is saved, so it is on the home screen.
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("3 ingredients · 0 steps"))
+    }
+
+    @MainActor
+    func testStepsOnlyTextCanCreateARecipe() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        app.buttons["Create recipe"].tap()
+
+        let alert = app.alerts["Check your recipe"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "No ingredients")).firstMatch.exists)
+        snap(app, "14-steps-only-warning")
+        alert.buttons["Create anyway"].tap()
+
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
+        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
+        XCTAssertFalse(app.staticTexts["No steps found"].exists)
+        snap(app, "15-steps-only-recipe")
+
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("0 ingredients · 2 steps"))
+    }
+
+    @MainActor
+    func testKeepEditingLeavesTheTextAndCreatesNothing() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Ingredients\n2 cups flour\n1 cup water")
+        app.buttons["Create recipe"].tap()
+
+        let alert = app.alerts["Check your recipe"]
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        alert.buttons["Keep editing"].tap()
+
+        XCTAssertTrue(app.buttons["Create recipe"].waitForExistence(timeout: 5), "still on the paste screen")
+        XCTAssertTrue((editor.value as? String ?? "").contains("2 cups flour"), "the text is kept")
+        XCTAssertFalse(app.staticTexts["Ingredients"].exists, "no recipe was created")
+    }
+
+    @MainActor
     func testSourceLinkCanBeAddedEditedAndRemoved() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]
