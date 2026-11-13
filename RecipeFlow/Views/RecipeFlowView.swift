@@ -29,8 +29,8 @@ struct RecipeFlowView: View {
                 section("Steps", edit: .steps, hasContent: !recipe.steps.isEmpty) {
                     steps(recipe.sortedSteps)
                 }
-                if !recipe.note.isEmpty {
-                    section("Note") { note(recipe.note) }
+                section("Notes", edit: .notes, hasContent: !recipe.note.isEmpty) {
+                    notes(recipe.note)
                 }
                 section("Source link") { sourceLink }
             }
@@ -43,12 +43,13 @@ struct RecipeFlowView: View {
         .sheet(item: $editing) { target in
             SectionEditor(
                 section: target,
-                initialText: target == .steps ? recipe.stepsText : recipe.ingredientsText,
-                isEditing: target == .steps ? !recipe.steps.isEmpty : !recipe.ingredients.isEmpty
+                initialText: currentText(of: target),
+                isEditing: hasContent(target)
             ) { parsed in
                 switch target {
                 case .steps: recipe.replaceSteps(with: parsed.steps, in: context)
                 case .ingredients: recipe.replaceIngredients(with: parsed.ingredients, in: context)
+                case .notes: recipe.note = parsed.note.joined(separator: "\n")
                 }
             }
         }
@@ -199,15 +200,39 @@ struct RecipeFlowView: View {
         }
     }
 
-    // MARK: Note
+    // MARK: Notes
 
-    private func note(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(Theme.ink)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-            .accessibilityIdentifier("noteText")
+    @ViewBuilder
+    private func notes(_ text: String) -> some View {
+        if text.isEmpty {
+            placeholder("No notes yet", hint: "Tap + to add notes")
+        } else {
+            Text(text)
+                .foregroundStyle(Theme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+                .accessibilityIdentifier("noteText")
+        }
+    }
+
+    // MARK: Editing
+
+    /// The section's current content as text, for the edit screen.
+    private func currentText(of section: RecipeSection) -> String {
+        switch section {
+        case .ingredients: recipe.ingredientsText
+        case .steps: recipe.stepsText
+        case .notes: recipe.note
+        }
+    }
+
+    private func hasContent(_ section: RecipeSection) -> Bool {
+        switch section {
+        case .ingredients: !recipe.ingredients.isEmpty
+        case .steps: !recipe.steps.isEmpty
+        case .notes: !recipe.note.isEmpty
+        }
     }
 
     // MARK: Source link

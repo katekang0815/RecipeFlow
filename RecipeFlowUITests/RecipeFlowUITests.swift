@@ -111,7 +111,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
         // Text left after the last numbered step goes to the Note section.
-        XCTAssertTrue(app.staticTexts["Note"].exists, "note heading")
+        XCTAssertTrue(app.staticTexts["Notes"].exists, "note heading")
         XCTAssertTrue(app.staticTexts["Rest the dough overnight."].exists)
         XCTAssertFalse(app.staticTexts["1 ingredient"].exists)
         snap(app, "5-split-recipe")
@@ -161,7 +161,7 @@ final class RecipeFlowUITests: XCTestCase {
 
         // The leftover line is in the Note, and nothing is listed as ignored.
         XCTAssertTrue(app.staticTexts["Serve with bread."].exists)
-        XCTAssertTrue(app.staticTexts["Note"].exists)
+        XCTAssertTrue(app.staticTexts["Notes"].exists)
         XCTAssertFalse(app.staticTexts["ignoredLines"].exists)
         snap(app, "11-bulleted-steps-and-note")
     }
@@ -386,6 +386,54 @@ final class RecipeFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["addStepsButton"].exists)
+    }
+
+    @MainActor
+    func testNotesCardIsAlwaysThereAndCanBeAddedAndEdited() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\nDirections\n1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+
+        // An empty Notes card sits between Steps and Source link, with a + like the other cards.
+        let steps = app.staticTexts["Steps"], notes = app.staticTexts["Notes"], link = app.staticTexts["Source link"]
+        XCTAssertTrue(notes.exists)
+        XCTAssertTrue(steps.frame.minY < notes.frame.minY && notes.frame.minY < link.frame.minY, "Notes is between Steps and Source link")
+        XCTAssertTrue(app.staticTexts["No notes yet"].exists)
+        XCTAssertTrue(app.buttons["addNotesButton"].exists)
+        XCTAssertFalse(app.buttons["editNotesButton"].exists)
+        snap(app, "20-empty-notes-card")
+        app.buttons["addNotesButton"].tap()
+
+        let editor = app.textViews["sectionEditorText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Add notes"].exists)
+        let save = app.buttons["saveSectionButton"]
+        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+        XCTAssertTrue(app.buttons["addPhotoButton"].exists, "Add photo is on the notes screen too")
+        editor.typeText("Rest the dough overnight.")
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+
+        // The note is kept as written, and the + becomes a pencil.
+        XCTAssertTrue(app.staticTexts["Rest the dough overnight."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["No notes yet"].exists)
+        XCTAssertTrue(app.buttons["editNotesButton"].exists)
+        XCTAssertFalse(app.buttons["addNotesButton"].exists)
+
+        // Edit shows the current note, and a line can be added to it.
+        app.buttons["editNotesButton"].tap()
+        let edit = app.textViews["sectionEditorText"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Edit notes"].exists)
+        XCTAssertTrue((edit.value as? String ?? "").contains("Rest the dough overnight."))
+        tapEnd(of: edit)
+        edit.typeText("\nServe warm.")
+        app.buttons["saveSectionButton"].tap()
+
+        let card = app.staticTexts["noteText"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(card.label.contains("Rest the dough overnight."))
+        XCTAssertTrue(card.label.contains("Serve warm."))
+        snap(app, "21-notes-card-filled")
     }
 
     @MainActor
