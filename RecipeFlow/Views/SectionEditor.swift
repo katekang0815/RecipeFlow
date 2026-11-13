@@ -47,23 +47,24 @@ struct SectionEditor: View {
 
         NavigationStack {
             VStack(spacing: 16) {
+                // Save sits on the same line as Add photo.
                 TextCaptureView(
                     text: $text,
                     textIdentifier: "sectionEditorText",
                     autoFocus: !isEditing,
                     message: status(parsed, found: found),
                     messageIdentifier: "sectionEditorMessage"
-                )
-
-                Button {
-                    onSave(parsed)
-                    dismiss()
-                } label: {
-                    Text("Save").frame(maxWidth: .infinity)
+                ) {
+                    Button {
+                        onSave(parsed)
+                        dismiss()
+                    } label: {
+                        Text("Save").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(found == 0)
+                    .accessibilityIdentifier("saveSectionButton")
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(found == 0)
-                .accessibilityIdentifier("saveSectionButton")
             }
             .padding(16)
             .background(Theme.background.ignoresSafeArea())

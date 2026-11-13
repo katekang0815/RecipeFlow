@@ -9,13 +9,15 @@ import PhotosUI
 /// A large text field plus an Add photo menu (take a photo, or pick one). A photo is cropped,
 /// read with OCR, and its text added to the end of the field, where it can still be corrected.
 /// Used by the paste screen and by the screens that add or edit ingredients and steps.
-struct TextCaptureView: View {
+/// A `trailing` button, such as Save, sits on the same line as Add photo.
+struct TextCaptureView<Trailing: View>: View {
     @Binding var text: String
     var textIdentifier: String
-    var autoFocus = false
+    var autoFocus: Bool
     /// A message from the screen using this view, shown above the Add photo button.
     var message: String?
-    var messageIdentifier = "pasteMessage"
+    var messageIdentifier: String
+    private let trailing: Trailing
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var showLibrary = false
@@ -24,6 +26,22 @@ struct TextCaptureView: View {
     @State private var isScanning = false
     @State private var scanMessage: String?
     @FocusState private var isFocused: Bool
+
+    init(
+        text: Binding<String>,
+        textIdentifier: String,
+        autoFocus: Bool = false,
+        message: String? = nil,
+        messageIdentifier: String = "pasteMessage",
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        _text = text
+        self.textIdentifier = textIdentifier
+        self.autoFocus = autoFocus
+        self.message = message
+        self.messageIdentifier = messageIdentifier
+        self.trailing = trailing()
+    }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -39,33 +57,10 @@ struct TextCaptureView: View {
                 note(message).accessibilityIdentifier(messageIdentifier)
             }
 
-            Menu {
-                if CameraPicker.isAvailable {
-                    Button {
-                        CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
-                    } label: {
-                        Label("Take photo", systemImage: "camera")
-                    }
-                }
-                Button { showLibrary = true } label: {
-                    Label("Choose from library", systemImage: "photo")
-                }
-            } label: {
-                Group {
-                    if isScanning {
-                        ProgressView().tint(Theme.ink)
-                    } else {
-                        Label("Add photo", systemImage: "photo")
-                    }
-                }
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(RoundedRectangle(cornerRadius: 16).stroke(Theme.ink, lineWidth: 2))
+            HStack(spacing: 12) {
+                addPhotoMenu
+                trailing
             }
-            .disabled(isScanning)
-            .accessibilityIdentifier("addPhotoButton")
         }
         .onAppear { if autoFocus { isFocused = true } }
         .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
@@ -79,6 +74,39 @@ struct TextCaptureView: View {
             }
         }
         .cameraDeniedAlert(isPresented: $showCameraDenied)
+    }
+
+    /// Sized like the primary button (same text size and padding), so the two line up side by side.
+    private var addPhotoMenu: some View {
+        Menu {
+            if CameraPicker.isAvailable {
+                Button {
+                    CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
+                } label: {
+                    Label("Take photo", systemImage: "camera")
+                }
+            }
+            Button { showLibrary = true } label: {
+                Label("Choose from library", systemImage: "photo")
+            }
+        } label: {
+            Group {
+                if isScanning {
+                    ProgressView().tint(Theme.ink)
+                } else {
+                    Label("Add photo", systemImage: "photo")
+                }
+            }
+            .font(.system(size: 22, weight: .bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundStyle(Theme.ink)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(RoundedRectangle(cornerRadius: 16).stroke(Theme.ink, lineWidth: 2))
+        }
+        .disabled(isScanning)
+        .accessibilityIdentifier("addPhotoButton")
     }
 
     private func note(_ text: String) -> some View {
@@ -115,5 +143,21 @@ struct TextCaptureView: View {
         } catch {
             scanMessage = "Couldn't read that photo."
         }
+    }
+}
+
+extension TextCaptureView where Trailing == EmptyView {
+    /// With no trailing button, Add photo takes the full width.
+    init(
+        text: Binding<String>,
+        textIdentifier: String,
+        autoFocus: Bool = false,
+        message: String? = nil,
+        messageIdentifier: String = "pasteMessage"
+    ) {
+        self.init(
+            text: text, textIdentifier: textIdentifier, autoFocus: autoFocus,
+            message: message, messageIdentifier: messageIdentifier
+        ) { EmptyView() }
     }
 }
