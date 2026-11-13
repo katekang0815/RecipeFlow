@@ -76,7 +76,7 @@ struct RecipePersistenceTests {
         #expect(recipe.sortedIngredients.map(\.name) == ["flour", "water", "eggs"])
         #expect(recipe.steps.isEmpty)
         #expect(recipe.note == "")
-        #expect(recipe.title == "Untitled recipe")
+        #expect(recipe.displayTitle == "Untitled recipe")
         #expect(try container.mainContext.fetch(FetchDescriptor<Recipe>()).count == 1)
     }
 
@@ -93,11 +93,14 @@ struct RecipePersistenceTests {
     @Test func recipeWithoutATitleIsUntitled() throws {
         let container = PersistenceController.previewContainer(withSample: false)
         let recipe = Recipe.create(from: "Ingredients\n2 cups flour\nDirections\n1. Mix.", in: container.mainContext)
-        #expect(recipe.title == "Untitled recipe")
+        // The stored title stays empty so it can be typed into; lists show "Untitled recipe".
+        #expect(recipe.title == "")
+        #expect(recipe.displayTitle == "Untitled recipe")
     }
 
     @Test func emptyTitleFromAnOlderRecipeShowsAsUntitled() {
         #expect(Recipe(title: "").displayTitle == "Untitled recipe")
+        #expect(Recipe(title: "   ").displayTitle == "Untitled recipe", "a blank title counts as empty")
         #expect(Recipe(title: "Toast").displayTitle == "Toast")
     }
 

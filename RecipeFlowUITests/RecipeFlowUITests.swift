@@ -100,7 +100,9 @@ final class RecipeFlowUITests: XCTestCase {
         """)
         app.buttons["Create recipe"].tap()
 
-        XCTAssertTrue(app.staticTexts["Tangzhong Bread"].waitForExistence(timeout: 5))
+        let title = app.descendants(matching: .any)["recipeTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Tangzhong Bread")
         XCTAssertTrue(app.staticTexts["Tangzhong"].exists, "group heading")
         XCTAssertTrue(app.staticTexts["40 g bread flour"].exists)
         XCTAssertTrue(app.staticTexts["580 g bread flour"].exists)
@@ -434,6 +436,61 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(card.label.contains("Rest the dough overnight."))
         XCTAssertTrue(card.label.contains("Serve warm."))
         snap(app, "21-notes-card-filled")
+    }
+
+    /// Puts the cursor at the end of the title by tapping the right end of its first line.
+    private func tapEndOfTitle(_ title: XCUIElement) {
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
+    }
+
+    @MainActor
+    func testTheTitleIsEditedByTappingItAndReturnSavesIt() throws {
+        let app = launchWithRecipe("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast it.\n2. Butter it.")
+        let title = app.descendants(matching: .any)["recipeTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Toast")
+        // No edit icon: the title is the only thing to tap, and no button was added for it.
+        XCTAssertFalse(app.buttons["editTitleButton"].exists)
+
+        tapEndOfTitle(title)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
+        title.typeText("Garlic Toast\n")  // Return finishes editing
+        XCTAssertEqual(title.value as? String, "Garlic Toast")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Return closes the keyboard")
+        snap(app, "22-title-edited")
+
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Garlic Toast"))
+    }
+
+    @MainActor
+    func testAnEmptyTitleShowsAHintAndAUntitledRecipeCanBeNamed() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\nDirections\n1. Mix.\n2. Bake.")
+        let title = app.descendants(matching: .any)["recipeTitle"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Untitled recipe", "the faded hint")
+        snap(app, "23-untitled-hint")
+
+        title.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        title.typeText("Plain Bread\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Plain Bread")
+
+        // Clearing it again brings the hint back, and lists say "Untitled recipe".
+        tapEndOfTitle(title)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 11))
+        title.typeText("\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Untitled recipe")
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Untitled recipe"))
     }
 
     @MainActor

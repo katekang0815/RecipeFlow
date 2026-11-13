@@ -12,16 +12,21 @@ struct RecipeFlowView: View {
     var recipe: Recipe
 
     @Environment(\.modelContext) private var context
+    /// The title as it is being typed. It is saved to the recipe when editing ends.
+    @State private var titleDraft: String
+    @FocusState private var titleFocused: Bool
+
+    init(recipe: Recipe) {
+        self.recipe = recipe
+        _titleDraft = State(initialValue: recipe.title)
+    }
     @State private var showLinkEditor = false
     @State private var editing: RecipeSection?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text(recipe.displayTitle)
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(Theme.ink)
-                    .accessibilityIdentifier("recipeTitle")
+                titleField
 
                 section("Ingredients", edit: .ingredients, hasContent: !recipe.ingredients.isEmpty) {
                     ingredients(recipe.sortedIngredients)
@@ -64,6 +69,45 @@ struct RecipeFlowView: View {
 
     /// A section with its heading. A section the user can fill in has a round button on the heading:
     /// + while it is empty, a pencil once it has content. Both open the same add or edit screen.
+    /// The title is the text field itself, so tapping it edits it and there is no edit icon.
+    /// An empty title shows "Untitled recipe" faded, as a hint that it can be typed over.
+    private var titleField: some View {
+        TextField(
+            "",
+            text: $titleDraft,
+            prompt: Text(Recipe.untitledTitle).foregroundStyle(Theme.ink.opacity(0.45)),
+            axis: .vertical
+        )
+        .font(.system(size: 30, weight: .bold))
+        .foregroundStyle(Theme.ink)
+        .tint(Theme.ink)
+        .submitLabel(.done)
+        .focused($titleFocused)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // An empty field only reacts to taps on its hint text; make the whole row work.
+            if titleDraft.isEmpty { titleFocused = true }
+        }
+        .accessibilityIdentifier("recipeTitle")
+        .onChange(of: titleDraft) { _, new in
+            // A long title wraps, so Return ends editing instead of adding a line.
+            if new.contains("\n") {
+                titleDraft = new.replacingOccurrences(of: "\n", with: "")
+                titleFocused = false
+            }
+        }
+        .onChange(of: titleFocused) { _, focused in
+            if !focused { saveTitle() }
+        }
+        .onDisappear { saveTitle() }
+    }
+
+    private func saveTitle() {
+        let trimmed = titleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        titleDraft = trimmed
+        if recipe.title != trimmed { recipe.title = trimmed }
+    }
+
     private func section<Content: View>(
         _ title: String,
         edit: RecipeSection? = nil,
