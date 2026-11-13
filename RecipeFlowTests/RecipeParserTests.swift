@@ -227,7 +227,8 @@ struct RecipeParserTests {
 
     @Test func numberedLinesInAnIngredientListStayIngredients() {
         let recipe = RecipeParser.parse("Ingredients\n1. 2 cups flour\n2. 1 cup sugar\nSteps\n1. Mix.")
-        #expect(recipe.ingredients.count == 2)
+        #expect(recipe.ingredients.map(\.name) == ["flour", "sugar"])
+        #expect(recipe.ingredients.map(\.quantity) == ["2", "1"])
         #expect(recipe.steps.count == 1)
     }
 

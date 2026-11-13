@@ -13,8 +13,10 @@ import Foundation
 ///   step stays with it: wrapped lines, and bullets (•, -) listed under it.
 /// - Note: an explicit "Note" section, and every other line that fits nowhere else.
 enum RecipeParser {
-    static func parse(_ text: String) -> ParsedRecipe {
-        var state = ParserState(lines: normalizedLines(text))
+    /// With `startingWithIngredients`, the text is an ingredient list that has no header above it,
+    /// as when the user adds ingredients to an existing recipe.
+    static func parse(_ text: String, startingWithIngredients: Bool = false) -> ParsedRecipe {
+        var state = ParserState(lines: normalizedLines(text), startingWithIngredients: startingWithIngredients)
         state.run()
         return state.result
     }
@@ -62,7 +64,7 @@ private struct ParserState {
     /// Past this line no numbered step follows, so leftover text is a note, not a wrapped line.
     let lastStepLine: Int?
 
-    var section = Section.none
+    var section: Section
     var group: String?
     var title: String?
     var ingredients: [ParsedIngredient] = []
@@ -71,9 +73,10 @@ private struct ParserState {
     /// A bullet symbol sat alone on its line, so the next line is the bullet's text.
     var bulletPending = false
 
-    init(lines: [String]) {
+    init(lines: [String], startingWithIngredients: Bool = false) {
         self.lines = lines
-        stepLines = Patterns.stepLines(in: lines)
+        section = startingWithIngredients ? .ingredients : .none
+        stepLines = Patterns.stepLines(in: lines, startingIn: section)
         lastStepLine = stepLines.keys.max()
     }
 
@@ -145,6 +148,13 @@ private struct ParserState {
 
     /// Everything under the ingredients header is an ingredient, even a line with no amount.
     private mutating func handleIngredient(_ text: String) {
+        // A numbered ingredient list ("1. 2 cups flour"): the list number is not part of the ingredient.
+        var text = text
+        if let numbered = Patterns.numberedStep(text),
+           Patterns.ingredient(numbered.text, allowTrailing: false) != nil {
+            text = numbered.text
+        }
+
         if let name = Patterns.groupName(text) {
             group = name
         } else {
@@ -311,10 +321,10 @@ private enum Patterns {
     /// to begin at 1, since a cropped photo can start mid-recipe. A numbered line that goes
     /// backwards is left as plain text. Numbered lines inside a note, or numbered ingredients
     /// ("1. 2 cups flour"), are not steps.
-    static func stepLines(in lines: [String]) -> [Int: String] {
+    static func stepLines(in lines: [String], startingIn start: ParserState.Section = .none) -> [Int: String] {
         var result: [Int: String] = [:]
         var previous: Int?
-        var section = ParserState.Section.none
+        var section = start
 
         for (index, line) in lines.enumerated() where !line.isEmpty && !isNoise(line) {
             guard let (number, text) = numberedStep(line) else {

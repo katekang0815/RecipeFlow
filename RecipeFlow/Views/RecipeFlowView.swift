@@ -11,7 +11,9 @@ import SwiftData
 struct RecipeFlowView: View {
     var recipe: Recipe
 
+    @Environment(\.modelContext) private var context
     @State private var showLinkEditor = false
+    @State private var editing: RecipeSection?
 
     var body: some View {
         ScrollView {
@@ -21,8 +23,12 @@ struct RecipeFlowView: View {
                     .foregroundStyle(Theme.ink)
                     .accessibilityIdentifier("recipeTitle")
 
-                section("Ingredients") { ingredients(recipe.sortedIngredients) }
-                section("Steps") { steps(recipe.sortedSteps) }
+                section("Ingredients", edit: .ingredients, hasContent: !recipe.ingredients.isEmpty) {
+                    ingredients(recipe.sortedIngredients)
+                }
+                section("Steps", edit: .steps, hasContent: !recipe.steps.isEmpty) {
+                    steps(recipe.sortedSteps)
+                }
                 if !recipe.note.isEmpty {
                     section("Note") { note(recipe.note) }
                 }
@@ -34,6 +40,18 @@ struct RecipeFlowView: View {
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
+        .sheet(item: $editing) { target in
+            SectionEditor(
+                section: target,
+                initialText: target == .steps ? recipe.stepsText : recipe.ingredientsText,
+                isEditing: target == .steps ? !recipe.steps.isEmpty : !recipe.ingredients.isEmpty
+            ) { parsed in
+                switch target {
+                case .steps: recipe.replaceSteps(with: parsed.steps, in: context)
+                case .ingredients: recipe.replaceIngredients(with: parsed.ingredients, in: context)
+                }
+            }
+        }
         .sheet(isPresented: $showLinkEditor) {
             SourceLinkEditor(
                 current: recipe.sourceURL,
@@ -43,22 +61,46 @@ struct RecipeFlowView: View {
         }
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    /// A section with its heading. A section the user can fill in has a round button on the heading:
+    /// + while it is empty, a pencil once it has content. Both open the same add or edit screen.
+    private func section<Content: View>(
+        _ title: String,
+        edit: RecipeSection? = nil,
+        hasContent: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(Theme.ink)
+            HStack {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                Spacer()
+                if let edit {
+                    Button { editing = edit } label: {
+                        Image(systemName: hasContent ? "pencil" : "plus")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Theme.ink))
+                    }
+                    .accessibilityLabel("\(hasContent ? "Edit" : "Add") \(edit.noun)")
+                    .accessibilityIdentifier("\(hasContent ? "edit" : "add")\(edit.noun.capitalized)Button")
+                }
+            }
             content()
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(title.lowercased() + "Section")
     }
 
-    private func placeholder(_ text: String) -> some View {
-        Text(text)
-            .foregroundStyle(Theme.ink.opacity(0.45))
-            .frame(maxWidth: .infinity, minHeight: 140)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+    private func placeholder(_ text: String, hint: String) -> some View {
+        VStack(spacing: 6) {
+            Text(text)
+            Text(hint).font(.footnote)
+        }
+        .foregroundStyle(Theme.ink.opacity(0.45))
+        .frame(maxWidth: .infinity, minHeight: 140)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
     }
 
     // MARK: Ingredients
@@ -79,7 +121,7 @@ struct RecipeFlowView: View {
     @ViewBuilder
     private func ingredients(_ items: [Ingredient]) -> some View {
         if items.isEmpty {
-            placeholder("No ingredients found")
+            placeholder("No ingredients found", hint: "Tap + to add ingredients")
         } else {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(Array(grouped(items).enumerated()), id: \.offset) { _, block in
@@ -126,7 +168,7 @@ struct RecipeFlowView: View {
     @ViewBuilder
     private func steps(_ items: [Step]) -> some View {
         if items.isEmpty {
-            placeholder("No steps found")
+            placeholder("No steps found", hint: "Tap + to add steps")
         } else {
             // One card for every step, like the ingredients card above it.
             VStack(alignment: .leading, spacing: 18) {

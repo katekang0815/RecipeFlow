@@ -252,6 +252,142 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Ingredients"].exists, "no recipe was created")
     }
 
+    /// Starts the app with no saved recipes and creates a recipe from `text`, accepting the partial-recipe popup.
+    private func launchWithRecipe(_ text: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore"]
+        app.launch()
+
+        app.buttons["Add"].tap()
+        let editor = app.textViews["pasteTextEditor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText(text)
+        app.buttons["Create recipe"].tap()
+        let createAnyway = app.alerts["Check your recipe"].buttons["Create anyway"]
+        if createAnyway.waitForExistence(timeout: 3) { createAnyway.tap() }
+        return app
+    }
+
+    /// Puts the cursor at the end of the text by tapping the empty space below the last line.
+    private func tapEnd(of editor: XCUIElement) {
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
+    }
+
+    @MainActor
+    func testAddStepsToARecipeThatHasOnlyIngredients() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
+
+        // Empty section: +. Section with content: pencil.
+        XCTAssertTrue(app.buttons["addStepsButton"].exists)
+        XCTAssertFalse(app.buttons["editStepsButton"].exists)
+        XCTAssertTrue(app.buttons["editIngredientsButton"].exists)
+        XCTAssertFalse(app.buttons["addIngredientsButton"].exists)
+        snap(app, "16-plus-on-empty-steps")
+        app.buttons["addStepsButton"].tap()
+
+        let editor = app.textViews["sectionEditorText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Add steps"].exists)
+        let save = app.buttons["saveSectionButton"]
+        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+
+        // Text with no numbered line is not steps.
+        editor.typeText("Mix it")
+        let message = app.staticTexts["sectionEditorMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertTrue(message.label.contains("No numbered steps found"))
+        XCTAssertFalse(save.isEnabled)
+
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
+        editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        XCTAssertTrue(app.staticTexts["2 steps found."].waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isEnabled)
+        snap(app, "17-add-steps")
+        save.tap()
+
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
+        XCTAssertFalse(app.staticTexts["No steps found"].exists)
+        XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
+        XCTAssertTrue(app.buttons["editStepsButton"].exists, "pencil replaces the +")
+        XCTAssertFalse(app.buttons["addStepsButton"].exists)
+        snap(app, "18-steps-added")
+
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("3 ingredients · 2 steps"))
+    }
+
+    @MainActor
+    func testEditStepsShowsTheCurrentTextAndSavesChangesOnlyToSteps() throws {
+        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
+
+        app.buttons["editStepsButton"].tap()
+        let editor = app.textViews["sectionEditorText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Edit steps"].exists)
+        let current = editor.value as? String ?? ""
+        XCTAssertTrue(current.contains("1. Mix the flour and water"))
+        XCTAssertTrue(current.contains("2. Bake for 20 minutes"))
+
+        // Add a step, and some ingredients that this screen must leave out.
+        tapEnd(of: editor)
+        editor.typeText("\n3. Cool on a rack.\nIngredients\n2 cups flour")
+        let message = app.staticTexts["sectionEditorMessage"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertTrue(message.label.contains("3 steps found."))
+        XCTAssertTrue(message.label.contains("1 ingredient in this text will not be added."))
+        snap(app, "19-edit-steps")
+        app.buttons["saveSectionButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].exists)
+        XCTAssertTrue(app.staticTexts["No ingredients found"].exists, "only the steps were saved")
+    }
+
+    @MainActor
+    func testAddIngredientsToARecipeThatHasOnlySteps() throws {
+        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addIngredientsButton"].exists)
+        app.buttons["addIngredientsButton"].tap()
+
+        let editor = app.textViews["sectionEditorText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Add ingredients"].exists)
+        // No "Ingredients" heading is needed, and a line with no amount counts.
+        editor.typeText("salt\n2 cups flour")
+        XCTAssertTrue(app.staticTexts["2 ingredients found."].waitForExistence(timeout: 5))
+        app.buttons["saveSectionButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["salt"].exists)
+        XCTAssertFalse(app.staticTexts["No ingredients found"].exists)
+        XCTAssertTrue(app.buttons["editIngredientsButton"].exists)
+        XCTAssertFalse(app.buttons["addIngredientsButton"].exists)
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists, "the steps are untouched")
+    }
+
+    @MainActor
+    func testCancelLeavesTheSectionAsItWas() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water")
+        XCTAssertTrue(app.buttons["addStepsButton"].waitForExistence(timeout: 5))
+        app.buttons["addStepsButton"].tap()
+
+        let editor = app.textViews["sectionEditorText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.typeText("1. Mix it.")
+        app.buttons["Cancel"].tap()
+
+        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addStepsButton"].exists)
+    }
+
     @MainActor
     func testSourceLinkCanBeAddedEditedAndRemoved() throws {
         let app = XCUIApplication()

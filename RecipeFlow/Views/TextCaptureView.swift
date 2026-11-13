@@ -1,0 +1,119 @@
+//
+//  TextCaptureView.swift
+//  RecipeFlow
+//
+
+import SwiftUI
+import PhotosUI
+
+/// A large text field plus an Add photo menu (take a photo, or pick one). A photo is cropped,
+/// read with OCR, and its text added to the end of the field, where it can still be corrected.
+/// Used by the paste screen and by the screens that add or edit ingredients and steps.
+struct TextCaptureView: View {
+    @Binding var text: String
+    var textIdentifier: String
+    var autoFocus = false
+    /// A message from the screen using this view, shown above the Add photo button.
+    var message: String?
+    var messageIdentifier = "pasteMessage"
+
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var showLibrary = false
+    @State private var showCamera = false
+    @State private var showCameraDenied = false
+    @State private var isScanning = false
+    @State private var scanMessage: String?
+    @FocusState private var isFocused: Bool
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            RecipeTextField(text: $text, identifier: textIdentifier)
+                .focused($isFocused)
+
+            if let scanMessage {
+                note(scanMessage)
+            }
+            if let message {
+                note(message).accessibilityIdentifier(messageIdentifier)
+            }
+
+            Menu {
+                if CameraPicker.isAvailable {
+                    Button {
+                        CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
+                    } label: {
+                        Label("Take photo", systemImage: "camera")
+                    }
+                }
+                Button { showLibrary = true } label: {
+                    Label("Choose from library", systemImage: "photo")
+                }
+            } label: {
+                Group {
+                    if isScanning {
+                        ProgressView().tint(Theme.ink)
+                    } else {
+                        Label("Add photo", systemImage: "photo")
+                    }
+                }
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(RoundedRectangle(cornerRadius: 16).stroke(Theme.ink, lineWidth: 2))
+            }
+            .disabled(isScanning)
+            .accessibilityIdentifier("addPhotoButton")
+        }
+        .onAppear { if autoFocus { isFocused = true } }
+        .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
+        .onChange(of: pickerItem) { _, item in
+            guard let item else { return }
+            Task { await scan(item) }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraFlow { image in
+                Task { await scan(image) }
+            }
+        }
+        .cameraDeniedAlert(isPresented: $showCameraDenied)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(Theme.ink.opacity(0.7))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func scan(_ item: PhotosPickerItem) async {
+        defer { pickerItem = nil }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else {
+            scanMessage = "Couldn't open that photo."
+            return
+        }
+        await scan(image)
+    }
+
+    /// Runs OCR on a photo and appends the result to the text field,
+    /// so the user can fix any misread characters before going on.
+    private func scan(_ image: UIImage) async {
+        isScanning = true
+        scanMessage = nil
+        defer { isScanning = false }
+
+        do {
+            let recognized = try await TextRecognizer.recognize(in: image)
+            if recognized.isEmpty {
+                scanMessage = "No text found in that photo."
+            } else {
+                text = trimmed.isEmpty ? recognized : trimmed + "\n" + recognized
+            }
+        } catch {
+            scanMessage = "Couldn't read that photo."
+        }
+    }
+}
