@@ -38,6 +38,34 @@ struct SectionTextTests {
         }
     }
 
+    // MARK: Adding a photo's text to a card
+
+    @Test func aPhotosTextGoesAfterWhatIsAlreadyThere() {
+        #expect(SectionText.appending("3. Cool.", to: "1. Mix.\n2. Bake.") == "1. Mix.\n2. Bake.\n3. Cool.")
+    }
+
+    @Test func anEmptyCardTakesThePhotosTextAsIs() {
+        #expect(SectionText.appending("1. Mix.", to: "") == "1. Mix.")
+        #expect(SectionText.appending("1. Mix.", to: "  \n ") == "1. Mix.")
+    }
+
+    @Test func trailingBlankLinesAreNotKeptBeforeTheAddition() {
+        #expect(SectionText.appending("salt", to: "2 cups flour\n\n") == "2 cups flour\nsalt")
+    }
+
+    @Test func morePhotosOfNumberedStepsAreAllCountedAsSteps() {
+        // A second page that starts again at 1 adds its steps after the first page's.
+        let text = SectionText.appending("1. Cool.\n2. Slice.", to: "1. Mix.\n2. Bake.")
+        let parsed = SectionText.parse(.steps, text)
+        #expect(parsed.steps.map(\.title) == ["Mix", "Bake", "Cool", "Slice"])
+    }
+
+    @Test func morePhotosOfIngredientsAreAllCountedAsIngredients() {
+        let text = SectionText.appending("1 tsp salt\nbutter", to: "2 cups flour")
+        let parsed = SectionText.parse(.ingredients, text)
+        #expect(parsed.ingredients.map(\.name) == ["flour", "salt", "butter"])
+    }
+
     // MARK: The line under the field
 
     @Test func statusSaysWhatWasFound() {

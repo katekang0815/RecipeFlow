@@ -52,6 +52,13 @@ enum SectionText {
         }
     }
 
+    /// `addition` placed after the text already in a card, on a new line. A photo of more steps or
+    /// ingredients is added this way, so what was there is kept.
+    static func appending(_ addition: String, to text: String) -> String {
+        let current = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return current.isEmpty ? addition : current + "\n" + addition
+    }
+
     /// How many items of this section the text holds.
     static func count(_ section: RecipeSection, _ parsed: ParsedRecipe) -> Int {
         switch section {

@@ -7,8 +7,8 @@ import SwiftUI
 import SwiftData
 
 /// A saved recipe. The title and the Ingredients, Steps and Notes cards are edited in place:
-/// tap one and type, with no edit icon. An empty card has a photo icon for adding by photo.
-/// The source link has its own add and edit buttons.
+/// tap one and type, with no edit icon. Each of those cards has a photo icon for adding by photo,
+/// empty or not. The source link has its own add and edit buttons.
 struct RecipeFlowView: View {
     var recipe: Recipe
 
@@ -49,13 +49,13 @@ struct RecipeFlowView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     titleField
 
-                    editableSection(.ingredients, "Ingredients", hasContent: !recipe.ingredients.isEmpty) {
+                    editableSection(.ingredients, "Ingredients") {
                         ingredients(recipe.sortedIngredients)
                     }
-                    editableSection(.steps, "Steps", hasContent: !recipe.steps.isEmpty) {
+                    editableSection(.steps, "Steps") {
                         steps(recipe.sortedSteps)
                     }
-                    editableSection(.notes, "Notes", hasContent: !recipe.note.isEmpty) {
+                    editableSection(.notes, "Notes") {
                         notes(recipe.note)
                     }
 
@@ -162,18 +162,17 @@ struct RecipeFlowView: View {
         .accessibilityIdentifier(title.lowercased() + "Section")
     }
 
-    /// A card that is edited by tapping it. While it is empty its heading has a photo icon.
+    /// A card that is edited by tapping it. Its heading has a photo icon for adding more by photo.
     private func editableSection<Content: View>(
         _ section: RecipeSection,
         _ title: String,
-        hasContent: Bool,
         @ViewBuilder display: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 heading(title)
                 Spacer()
-                if !hasContent { photoButton(for: section) }
+                photoButton(for: section)
             }
 
             if editing == section {
@@ -307,19 +306,18 @@ struct RecipeFlowView: View {
         }
     }
 
-    /// A photo's text goes into the card for the user to check; it is saved like typed text.
+    /// A photo's text is added after what the card already holds, and shown for the user to check.
+    /// It is saved like typed text.
     private func handlePhoto(_ outcome: PhotoText.Outcome) {
         guard let target = photoTarget else { return }
         switch outcome {
         case .text(let text):
-            if editing == target {
-                let current = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                draft = current.isEmpty ? text : current + "\n" + text
-                focus = .section(target)
-            } else {
+            if editing != target {
                 beginEditing(target)
-                draft = text
+            } else {
+                requestFocus(target)
             }
+            draft = SectionText.appending(text, to: draft)
         case .problem(let message):
             photoProblem = (target, message)
         }
