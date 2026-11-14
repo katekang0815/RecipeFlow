@@ -10,18 +10,24 @@ import XCTest
 final class RecipeFlowUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
         // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
+    // MARK: Helpers
 
+    private var checkedKeyboardTip = false
+
+    /// Waits for the keyboard. The first time a keyboard opens on a fresh Simulator it shows a one-time
+    /// tip about sliding to type, which covers the keyboard until "Continue" is tapped.
+    private func waitForKeyboard(_ app: XCUIApplication) {
+        if !checkedKeyboardTip {
+            checkedKeyboardTip = true
+            let continueButton = app.buttons["Continue"]
+            if continueButton.waitForExistence(timeout: 2) { continueButton.tap() }
+        }
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    }
 
     private func snap(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -30,250 +36,21 @@ final class RecipeFlowUITests: XCTestCase {
         add(attachment)
     }
 
-    @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    /// Launches with no saved recipes: the tests use a store that lives only in memory.
+    private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore"]
         app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-    }
-
-    @MainActor
-    func testAddButtonOpensPasteScreenAndCreatesRecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        snap(app, "1-home")
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-
-        let create = app.buttons["Create recipe"]
-        snap(app, "2-paste-empty")
-        XCTAssertFalse(create.isEnabled, "Create should be disabled while the text is empty")
-
-        editor.tap()
-        editor.typeText("Toast\nIngredients: bread")
-        XCTAssertTrue(create.isEnabled)
-        snap(app, "3-paste-filled")
-        create.tap()
-
-        // One ingredient and no steps is only part of a recipe, so the app asks first.
-        let createAnyway = app.alerts.buttons["Create anyway"]
-        XCTAssertTrue(createAnyway.waitForExistence(timeout: 5))
-        snap(app, "3b-partial-warning")
-        createAnyway.tap()
-
-        // "Toast" is the title and "bread" the only ingredient; there are no steps.
-        XCTAssertTrue(app.staticTexts["bread"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["No steps found"].exists)
-        snap(app, "4-recipe-flow")
-    }
-
-    @MainActor
-    func testCreateShowsTheSplitRecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("""
-        Tangzhong Bread
-        Ingredients
-        Tangzhong:
-        40g bread flour
-        200g water
-
-        580g bread flour
-        salt to taste
-        egg wash (1 egg yolk + milk)
-        Directions
-        1. Mix flour with water. Stir until thick.
-        2. Refrigerate for 6 hours.
-        Rest the dough overnight.
-        """)
-        app.buttons["Create recipe"].tap()
-
-        let title = app.descendants(matching: .any)["recipeTitle"]
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Tangzhong Bread")
-        XCTAssertTrue(app.staticTexts["Tangzhong"].exists, "group heading")
-        XCTAssertTrue(app.staticTexts["40 g bread flour"].exists)
-        XCTAssertTrue(app.staticTexts["580 g bread flour"].exists)
-        XCTAssertTrue(app.staticTexts["salt, to taste"].exists)
-        XCTAssertTrue(app.staticTexts["egg wash"].exists)
-        XCTAssertTrue(app.staticTexts["1 egg yolk + milk"].exists, "note under the ingredient")
-        XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
-        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
-        XCTAssertFalse(app.staticTexts["No steps found"].exists)
-        // Text left after the last numbered step goes to the Note section.
-        XCTAssertTrue(app.staticTexts["Notes"].exists, "note heading")
-        XCTAssertTrue(app.staticTexts["Rest the dough overnight."].exists)
-        XCTAssertFalse(app.staticTexts["1 ingredient"].exists)
-        snap(app, "5-split-recipe")
-
-        // Back on the home screen the saved recipe is listed, and it opens again.
-        app.navigationBars.buttons.firstMatch.tap()
-        let row = app.buttons["recipeRow"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(row.label.contains("Tangzhong Bread"))
-        XCTAssertTrue(row.label.contains("5 ingredients · 2 steps"))
-        snap(app, "7-home-list")
-        row.tap()
-        XCTAssertTrue(app.staticTexts["40 g bread flour"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
-    }
-
-    @MainActor
-    func testBulletsStayInsideTheirNumberedStepAndLeftoverTextGoesToTheNote() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("""
-        Ingredients
-        2 cups flour
-        1 cup water
-        1. Roast the Garlic
-        - Preheat: Set your oven to 375F.
-        - Prep: Slice the tips off the bulbs.
-        2. Brown the Meat
-        - Sear: Add the beef.
-        Serve with bread.
-        """)
-        app.buttons["Create recipe"].tap()
-
-        // Only the two numbered lines are steps; the bullets sit inside them.
-        XCTAssertTrue(app.staticTexts["Roast the Garlic"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Brown the Meat"].exists)
-        XCTAssertFalse(app.staticTexts["Preheat: Set your oven to 375F."].exists, "a bullet is not a step of its own")
-        let detail = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Preheat")).firstMatch
-        XCTAssertTrue(detail.exists)
-        XCTAssertTrue(detail.label.contains("• Prep: Slice the tips off the bulbs."))
-
-        // The leftover line is in the Note, and nothing is listed as ignored.
-        XCTAssertTrue(app.staticTexts["Serve with bread."].exists)
-        XCTAssertTrue(app.staticTexts["Notes"].exists)
-        XCTAssertFalse(app.staticTexts["ignoredLines"].exists)
-        snap(app, "11-bulleted-steps-and-note")
-    }
-
-    @MainActor
-    func testIngredientsOnlyTextCanCreateARecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
-        app.buttons["Create recipe"].tap()
-
-        // Part of a recipe: the app says what is missing, then lets the user continue.
-        let alert = app.alerts["Check your recipe"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 5))
-        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "No numbered steps")).firstMatch.exists)
-        snap(app, "12-ingredients-only-warning")
-        alert.buttons["Create anyway"].tap()
-
-        XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["3 eggs"].exists)
-        XCTAssertTrue(app.staticTexts["No steps found"].exists)
-        XCTAssertFalse(app.staticTexts["No ingredients found"].exists)
-        snap(app, "13-ingredients-only-recipe")
-
-        // It is saved, so it is on the home screen.
-        app.navigationBars.buttons.firstMatch.tap()
-        let row = app.buttons["recipeRow"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(row.label.contains("3 ingredients · 0 steps"))
-    }
-
-    @MainActor
-    func testStepsOnlyTextCanCreateARecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
-        app.buttons["Create recipe"].tap()
-
-        let alert = app.alerts["Check your recipe"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 5))
-        XCTAssertTrue(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "No ingredients")).firstMatch.exists)
-        snap(app, "14-steps-only-warning")
-        alert.buttons["Create anyway"].tap()
-
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
-        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
-        XCTAssertFalse(app.staticTexts["No steps found"].exists)
-        snap(app, "15-steps-only-recipe")
-
-        app.navigationBars.buttons.firstMatch.tap()
-        let row = app.buttons["recipeRow"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        XCTAssertTrue(row.label.contains("0 ingredients · 2 steps"))
-    }
-
-    @MainActor
-    func testKeepEditingLeavesTheTextAndCreatesNothing() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("Ingredients\n2 cups flour\n1 cup water")
-        app.buttons["Create recipe"].tap()
-
-        let alert = app.alerts["Check your recipe"]
-        XCTAssertTrue(alert.waitForExistence(timeout: 5))
-        alert.buttons["Keep editing"].tap()
-
-        XCTAssertTrue(app.buttons["Create recipe"].waitForExistence(timeout: 5), "still on the paste screen")
-        XCTAssertTrue((editor.value as? String ?? "").contains("2 cups flour"), "the text is kept")
-        XCTAssertFalse(app.staticTexts["Ingredients"].exists, "no recipe was created")
-    }
-
-    /// Starts the app with no saved recipes and creates a recipe from `text`, accepting the partial-recipe popup.
-    private func launchWithRecipe(_ text: String) -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText(text)
-        app.buttons["Create recipe"].tap()
-        let createAnyway = app.alerts["Check your recipe"].buttons["Create anyway"]
-        if createAnyway.waitForExistence(timeout: 3) { createAnyway.tap() }
         return app
     }
 
-    /// Puts the cursor at the end of the text by tapping the empty space below the last line.
-    private func tapEnd(of editor: XCUIElement) {
-        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
+    private func titleField(_ app: XCUIApplication) -> XCUIElement {
+        app.descendants(matching: .any)["recipeTitle"]
+    }
+
+    /// The text field a card turns into while it is edited: "ingredients", "steps" or "notes".
+    private func cardEditor(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.descendants(matching: .any)["\(name)Editor"]
     }
 
     /// Ends editing a card: the Done button above the keyboard.
@@ -284,14 +61,194 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 
-    /// The text field a card turns into while it is edited: "ingredients", "steps" or "notes".
-    private func cardEditor(_ app: XCUIApplication, _ name: String) -> XCUIElement {
-        app.descendants(matching: .any)["\(name)Editor"]
+    /// Puts the cursor at the end of a card's text by tapping the empty space below the last line.
+    private func tapEnd(of editor: XCUIElement) {
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
+    }
+
+    /// Puts the cursor at the end of the title by tapping the right end of its first line.
+    private func tapEndOfTitle(_ title: XCUIElement) {
+        title.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
+    }
+
+    private func typeTitle(_ app: XCUIApplication, _ text: String) {
+        let title = titleField(app)
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        waitForKeyboard(app)
+        title.typeText(text + "\n")  // Return finishes editing
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    /// Taps an empty card, types into it, and ends editing.
+    private func fill(_ app: XCUIApplication, card name: String, hint: String, with text: String) {
+        let empty = app.staticTexts[hint]
+        XCTAssertTrue(empty.waitForExistence(timeout: 5))
+        empty.tap()
+        let editor = cardEditor(app, name)
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        editor.typeText(text)
+        tapDone(app)
+    }
+
+    /// Starts with no saved recipes, taps Add, and fills in the recipe the way a user does:
+    /// by typing into each part of the screen that is given.
+    private func launchWithRecipe(
+        title: String? = nil,
+        ingredients: String? = nil,
+        steps: String? = nil,
+        notes: String? = nil
+    ) -> XCUIApplication {
+        let app = launchApp()
+        app.buttons["Add"].tap()
+        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
+
+        if let title { typeTitle(app, title) }
+        if let ingredients { fill(app, card: "ingredients", hint: "No ingredients found", with: ingredients) }
+        if let steps { fill(app, card: "steps", hint: "No steps found", with: steps) }
+        if let notes { fill(app, card: "notes", hint: "No notes yet", with: notes) }
+        return app
+    }
+
+    // MARK: Launching
+
+    @MainActor
+    func testExample() throws {
+        _ = launchApp()
     }
 
     @MainActor
+    func testLaunchPerformance() throws {
+        // This measures how long it takes to launch your application.
+        measure(metrics: [XCTApplicationLaunchMetric()]) {
+            XCUIApplication().launch()
+        }
+    }
+
+    // MARK: Adding a recipe
+
+    @MainActor
+    func testAddOpensAnEmptyRecipeScreenWithATitleHint() throws {
+        let app = launchApp()
+        snap(app, "1-home")
+        app.buttons["Add"].tap()
+
+        // The title shows "Title", not "Untitled recipe", and every section is empty.
+        let title = titleField(app)
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertEqual(title.value as? String, "Title")
+        XCTAssertFalse(app.staticTexts["Untitled recipe"].exists)
+        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
+        XCTAssertTrue(app.staticTexts["No steps found"].exists)
+        XCTAssertTrue(app.staticTexts["No notes yet"].exists)
+        XCTAssertTrue(app.staticTexts["Add a source link"].exists)
+
+        // A photo icon for each of the three cards, and the source link's own +.
+        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
+        XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists)
+        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
+        XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
+        snap(app, "2-new-recipe")
+    }
+
+    @MainActor
+    func testGoingBackFromARecipeThatStayedEmptyKeepsNothing() throws {
+        let app = launchApp()
+        app.buttons["Add"].tap()
+        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // Back on a home screen with no recipes: just the Add button.
+        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["My recipes"].waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["recipeRow"].exists)
+    }
+
+    @MainActor
+    func testARecipeWithJustATitleIsKept() throws {
+        let app = launchWithRecipe(title: "Soup")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Soup"))
+        XCTAssertTrue(row.label.contains("0 ingredients · 0 steps"))
+    }
+
+    @MainActor
+    func testATitleStillBeingTypedWhenGoingBackIsKept() throws {
+        let app = launchApp()
+        app.buttons["Add"].tap()
+        let title = titleField(app)
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        waitForKeyboard(app)
+        title.typeText("Soup")  // no Return, no Done
+        app.navigationBars.buttons.firstMatch.tap()
+
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Soup"))
+    }
+
+    @MainActor
+    func testTypedCardsShowTheirContentAndTheRecipeIsListed() throws {
+        let app = launchWithRecipe(
+            title: "Tangzhong Bread",
+            ingredients: "Tangzhong:\n40g bread flour\n200g water\n\n580g bread flour\nsalt to taste\negg wash (1 egg yolk + milk)",
+            steps: "1. Mix flour with water. Stir until thick.\n2. Refrigerate for 6 hours.",
+            notes: "Rest the dough overnight."
+        )
+
+        XCTAssertEqual(titleField(app).value as? String, "Tangzhong Bread")
+        XCTAssertTrue(app.staticTexts["Tangzhong"].exists, "group heading")
+        XCTAssertTrue(app.staticTexts["40 g bread flour"].exists)
+        XCTAssertTrue(app.staticTexts["580 g bread flour"].exists)
+        XCTAssertTrue(app.staticTexts["salt, to taste"].exists)
+        XCTAssertTrue(app.staticTexts["egg wash"].exists)
+        XCTAssertTrue(app.staticTexts["1 egg yolk + milk"].exists, "note under the ingredient")
+        XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+        XCTAssertEqual(app.staticTexts["noteText"].label, "Rest the dough overnight.")
+        snap(app, "3-filled-recipe")
+
+        // Back on the home screen the recipe is listed, and it opens again.
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Tangzhong Bread"))
+        XCTAssertTrue(row.label.contains("5 ingredients · 2 steps"))
+        snap(app, "4-home-list")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["40 g bread flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+    }
+
+    @MainActor
+    func testBulletsStayInsideTheirNumberedStep() throws {
+        let app = launchWithRecipe(
+            ingredients: "2 cups flour",
+            steps: "1. Roast the Garlic\n- Preheat: Set your oven to 375F.\n- Prep: Slice the tips off the bulbs.\n2. Brown the Meat\n- Sear: Add the beef.",
+            notes: "Serve with bread."
+        )
+
+        // Only the two numbered lines are steps; the bullets sit inside them.
+        XCTAssertTrue(app.staticTexts["Roast the Garlic"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Brown the Meat"].exists)
+        XCTAssertFalse(app.staticTexts["Preheat: Set your oven to 375F."].exists, "a bullet is not a step of its own")
+        let detail = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Preheat")).firstMatch
+        XCTAssertTrue(detail.exists)
+        XCTAssertTrue(detail.label.contains("• Prep: Slice the tips off the bulbs."))
+        XCTAssertEqual(app.staticTexts["noteText"].label, "Serve with bread.")
+        snap(app, "5-bulleted-steps")
+    }
+
+    // MARK: The photo icon
+
+    @MainActor
     func testEveryCardHasAPhotoIconWhetherItIsEmptyOrNot() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
 
         // The photo icon is on every card, the filled Ingredients card included, so more can be added later.
@@ -303,12 +260,12 @@ final class RecipeFlowUITests: XCTestCase {
         }
         // The source link keeps its own + button.
         XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
-        snap(app, "16-photo-icon-on-empty-cards")
+        snap(app, "6-photo-icon-on-every-card")
     }
 
     @MainActor
     func testThePhotoIconOffersTheLibraryButNoCameraInTheSimulator() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.buttons["addStepsPhotoButton"].waitForExistence(timeout: 5))
         app.buttons["addStepsPhotoButton"].tap()
 
@@ -327,15 +284,17 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 eggs"].exists)
     }
 
+    // MARK: Filling and editing the cards in place
+
     @MainActor
     func testStepsAreAddedByTappingTheEmptyCard() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
         app.staticTexts["No steps found"].tap()
 
         let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
 
         // Text with no numbered line is not steps, and the card says so.
         editor.typeText("Mix it")
@@ -346,7 +305,7 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
         editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["2 steps found."].waitForExistence(timeout: 5))
-        snap(app, "17-typing-steps-in-the-card")
+        snap(app, "7-typing-steps-in-the-card")
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
@@ -354,7 +313,6 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
         XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists, "the photo icon stays, to add more steps")
         XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
-        snap(app, "18-steps-added")
 
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
@@ -364,7 +322,7 @@ final class RecipeFlowUITests: XCTestCase {
 
     @MainActor
     func testTappingTheStepsEditsThemInPlaceAndOnlyTheStepsAreSaved() throws {
-        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
         app.staticTexts["Mix the flour and water"].tap()
 
@@ -381,7 +339,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("3 steps found."))
         XCTAssertTrue(message.label.contains("1 ingredient in this text will not be added."))
-        snap(app, "19-editing-steps-in-place")
+        snap(app, "8-editing-steps-in-place")
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
@@ -391,7 +349,7 @@ final class RecipeFlowUITests: XCTestCase {
 
     @MainActor
     func testIngredientsAreAddedInPlaceWithoutAHeading() throws {
-        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
         app.staticTexts["No ingredients found"].tap()
 
@@ -409,14 +367,14 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testClearingACardEmptiesItAndBringsBackThePhotoIcon() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+    func testClearingACardEmptiesItAgain() throws {
+        let app = launchWithRecipe(title: "Pancakes", ingredients: "2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
         app.staticTexts["2 cups flour"].tap()
 
         let editor = cardEditor(app, "ingredients")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
         tapEnd(of: editor)
         // "2 cups flour" + "1 cup water" + "3 eggs" and two line breaks: 31 characters.
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 31))
@@ -427,18 +385,19 @@ final class RecipeFlowUITests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Pancakes"))
         XCTAssertTrue(row.label.contains("0 ingredients · 0 steps"))
     }
 
     @MainActor
     func testTextWithNothingValidIsNotSaved() throws {
-        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
         app.staticTexts["Mix the flour and water"].tap()
 
         let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
         tapEnd(of: editor)
         // "1. Mix the flour and water" + "2. Bake for 20 minutes" and a line break: 48 characters.
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 48))
@@ -461,7 +420,7 @@ final class RecipeFlowUITests: XCTestCase {
 
     @MainActor
     func testTappingAnotherCardSavesTheOneBeingEdited() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
         app.staticTexts["No steps found"].tap()
         let steps = cardEditor(app, "steps")
@@ -477,7 +436,10 @@ final class RecipeFlowUITests: XCTestCase {
 
     @MainActor
     func testNotesAreTypedInPlaceAndSitBetweenStepsAndSourceLink() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\nDirections\n1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        let app = launchWithRecipe(
+            ingredients: "2 cups flour\n1 cup water",
+            steps: "1. Mix the flour and water.\n2. Bake for 20 minutes."
+        )
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
 
         let steps = app.staticTexts["Steps"], notes = app.staticTexts["Notes"], link = app.staticTexts["Source link"]
@@ -509,30 +471,27 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(both.waitForExistence(timeout: 5))
         XCTAssertTrue(both.label.contains("Rest the dough overnight."))
         XCTAssertTrue(both.label.contains("Serve warm."))
-        snap(app, "21-notes-edited-in-place")
+        snap(app, "9-notes-edited-in-place")
     }
 
-    /// Puts the cursor at the end of the title by tapping the right end of its first line.
-    private func tapEndOfTitle(_ title: XCUIElement) {
-        title.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
-    }
+    // MARK: The title
 
     @MainActor
     func testTheTitleIsEditedByTappingItAndReturnSavesIt() throws {
-        let app = launchWithRecipe("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast it.\n2. Butter it.")
-        let title = app.descendants(matching: .any)["recipeTitle"]
+        let app = launchWithRecipe(title: "Toast", ingredients: "2 slices bread\n1 tbsp butter", steps: "1. Toast it.\n2. Butter it.")
+        let title = titleField(app)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         XCTAssertEqual(title.value as? String, "Toast")
         // No edit icon: the title is the only thing to tap, and no button was added for it.
         XCTAssertFalse(app.buttons["editTitleButton"].exists)
 
         tapEndOfTitle(title)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
         title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
         title.typeText("Garlic Toast\n")  // Return finishes editing
         XCTAssertEqual(title.value as? String, "Garlic Toast")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Return closes the keyboard")
-        snap(app, "22-title-edited")
+        snap(app, "10-title-edited")
 
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
@@ -541,46 +500,41 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testAnEmptyTitleShowsAHintAndAUntitledRecipeCanBeNamed() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\nDirections\n1. Mix.\n2. Bake.")
-        let title = app.descendants(matching: .any)["recipeTitle"]
+    func testAnEmptyTitleShowsTheTitleHintAndCanBeNamedAndClearedAgain() throws {
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water", steps: "1. Mix.\n2. Bake.")
+        let title = titleField(app)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Untitled recipe", "the faded hint")
-        snap(app, "23-untitled-hint")
+        XCTAssertEqual(title.value as? String, "Title", "the faded hint")
+        snap(app, "11-title-hint")
 
         title.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
         title.typeText("Plain Bread\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertEqual(title.value as? String, "Plain Bread")
 
-        // Clearing it again brings the hint back, and lists say "Untitled recipe".
+        // Clearing it again brings the hint back, and the list says "Untitled recipe".
         tapEndOfTitle(title)
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
         title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 11))
         title.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Untitled recipe")
+        XCTAssertEqual(title.value as? String, "Title")
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Untitled recipe"))
     }
 
+    // MARK: The source link
+
     @MainActor
     func testSourceLinkCanBeAddedEditedAndRemoved() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast the bread.\n2. Spread the butter.")
-        app.buttons["Create recipe"].tap()
-        XCTAssertTrue(app.staticTexts["2 slices bread"].waitForExistence(timeout: 5))
-        snap(app, "8-no-source-link")
+        let app = launchWithRecipe(
+            ingredients: "2 slices bread\n1 tbsp butter",
+            steps: "1. Toast the bread.\n2. Spread the butter."
+        )
+        snap(app, "12-no-source-link")
 
         // No link yet, so the + is shown and not the pencil.
         let add = app.buttons["addSourceLinkButton"]
@@ -602,7 +556,7 @@ final class RecipeFlowUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
         field.typeText("youtube.com/watch?v=abc")
         XCTAssertTrue(save.isEnabled)
-        snap(app, "9-add-source-link")
+        snap(app, "13-add-source-link")
         save.tap()
 
         // Saved: the link is shown, and the pencil replaces the +.
@@ -610,7 +564,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(link.waitForExistence(timeout: 5))
         XCTAssertTrue(link.label.contains("youtube.com/watch?v=abc"))
         XCTAssertFalse(app.buttons["addSourceLinkButton"].exists)
-        snap(app, "10-source-link-saved")
+        snap(app, "14-source-link-saved")
 
         // Edit shows the saved link, and Remove takes it away again.
         app.buttons["editSourceLinkButton"].tap()
@@ -622,18 +576,15 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["sourceLink"].exists)
     }
 
+    // MARK: The list
+
     @MainActor
     func testSwipeToDeleteRemovesASavedRecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("Toast\nIngredients\n2 slices bread\n1 tbsp butter\nDirections\n1. Toast the bread.\n2. Spread the butter.")
-        app.buttons["Create recipe"].tap()
+        let app = launchWithRecipe(
+            title: "Toast",
+            ingredients: "2 slices bread\n1 tbsp butter",
+            steps: "1. Toast the bread.\n2. Spread the butter."
+        )
         XCTAssertTrue(app.staticTexts["2 slices bread"].waitForExistence(timeout: 5))
 
         app.navigationBars.buttons.firstMatch.tap()
@@ -644,55 +595,5 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["recipeRow"].exists, "list is empty again")
-    }
-
-    @MainActor
-    func testCreateTurnsAwayTextThatIsNotARecipe() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let editor = app.textViews["pasteTextEditor"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.tap()
-        editor.typeText("The weather was lovely today and we walked along the river for a long time.")
-        app.buttons["Create recipe"].tap()
-
-        let message = app.staticTexts["pasteMessage"]
-        XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertTrue(message.label.contains("doesn't look like an organized recipe"))
-        XCTAssertFalse(app.staticTexts["Ingredients"].exists, "the flow page must not open")
-        XCTAssertTrue(app.buttons["Create recipe"].exists, "still on the paste screen")
-        snap(app, "6-rejected")
-
-        // Editing the text clears the message.
-        editor.typeText(" ")
-        XCTAssertFalse(message.exists)
-    }
-
-    @MainActor
-    func testAddPhotoMenuOffersLibraryAndHidesCameraWithoutOne() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
-        app.launch()
-
-        app.buttons["Add"].tap()
-        let addPhoto = app.buttons["addPhotoButton"]
-        XCTAssertTrue(addPhoto.waitForExistence(timeout: 5))
-        addPhoto.tap()
-
-        XCTAssertTrue(app.buttons["Choose from library"].waitForExistence(timeout: 5))
-        snap(app, "5-add-photo-menu")
-        // The Simulator has no camera, so the camera choice must not be offered.
-        XCTAssertFalse(app.buttons["Take photo"].exists)
-    }
-
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
     }
 }

@@ -98,6 +98,52 @@ struct RecipePersistenceTests {
         #expect(recipe.displayTitle == "Untitled recipe")
     }
 
+    // MARK: A recipe with nothing in it
+
+    @Test func aNewRecipeIsBlank() {
+        #expect(Recipe().isBlank)
+        #expect(Recipe(title: "   ").isBlank, "a blank title counts as no title")
+    }
+
+    @Test func anythingPutInARecipeMakesItNotBlank() throws {
+        let container = PersistenceController.previewContainer(withSample: false)
+        let context = container.mainContext
+
+        let titled = Recipe(title: "Soup")
+        context.insert(titled)
+        #expect(!titled.isBlank)
+
+        let withIngredient = Recipe()
+        context.insert(withIngredient)
+        withIngredient.addIngredient(Ingredient(name: "salt"))
+        #expect(!withIngredient.isBlank)
+
+        let withStep = Recipe()
+        context.insert(withStep)
+        withStep.insertStep(Step(title: "Mix"), at: 0)
+        #expect(!withStep.isBlank)
+
+        let withNote = Recipe()
+        context.insert(withNote)
+        withNote.note = "Rest overnight."
+        #expect(!withNote.isBlank)
+
+        let withLink = Recipe()
+        context.insert(withLink)
+        withLink.sourceURL = "https://example.com/soup"
+        #expect(!withLink.isBlank)
+    }
+
+    @Test func aRecipeWhoseSectionsWereClearedIsBlankAgain() throws {
+        let container = PersistenceController.previewContainer(withSample: false)
+        let recipe = Recipe()
+        container.mainContext.insert(recipe)
+        recipe.replaceIngredients(with: RecipeParser.parse("2 cups flour", startingWithIngredients: true).ingredients, in: container.mainContext)
+        #expect(!recipe.isBlank)
+        recipe.replaceIngredients(with: [], in: container.mainContext)
+        #expect(recipe.isBlank)
+    }
+
     @Test func emptyTitleFromAnOlderRecipeShowsAsUntitled() {
         #expect(Recipe(title: "").displayTitle == "Untitled recipe")
         #expect(Recipe(title: "   ").displayTitle == "Untitled recipe", "a blank title counts as empty")

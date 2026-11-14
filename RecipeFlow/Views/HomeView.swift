@@ -7,14 +7,12 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
-    private enum Route: Hashable {
-        case paste
-        case recipe(Recipe)
-    }
-
     @Environment(\.modelContext) private var context
     @Query(sort: \Recipe.createdAt, order: .reverse) private var recipes: [Recipe]
-    @State private var path: [Route] = []
+    @State private var path: [Recipe] = []
+    /// The recipe that Add just made. If the user comes back without putting anything in it,
+    /// it is not kept.
+    @State private var newRecipe: Recipe?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -28,23 +26,35 @@ struct HomeView: View {
             }
             .background(Theme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Route.self) { route in
-                switch route {
-                case .paste:
-                    PasteView(onCreate: createRecipe)
-                case .recipe(let recipe):
-                    RecipeFlowView(recipe: recipe)
-                }
+            .navigationDestination(for: Recipe.self) { recipe in
+                // The recipe screen saves what was typed before it says it was left,
+                // so this is the time to check whether anything was.
+                RecipeFlowView(recipe: recipe, onLeave: dropNewRecipeIfBlank)
             }
         }
         .tint(Theme.ink)
     }
 
+    /// Add opens an empty recipe straight away; each section is filled in on that screen.
     private var addButton: some View {
-        Button { path.append(.paste) } label: {
+        Button(action: addRecipe) {
             Label("Add", systemImage: "plus")
         }
         .buttonStyle(PrimaryButtonStyle())
+    }
+
+    private func addRecipe() {
+        let recipe = Recipe()
+        context.insert(recipe)
+        newRecipe = recipe
+        path.append(recipe)
+    }
+
+    /// Only once the recipe screen is really gone: it also reports leaving while the camera covers it.
+    private func dropNewRecipeIfBlank() {
+        guard let recipe = newRecipe, !path.contains(where: { $0 === recipe }) else { return }
+        newRecipe = nil
+        if recipe.isBlank { recipe.delete(from: context) }
     }
 
     // MARK: Saved recipes
@@ -59,7 +69,7 @@ struct HomeView: View {
 
             List {
                 ForEach(recipes) { recipe in
-                    Button { path.append(.recipe(recipe)) } label: {
+                    Button { path.append(recipe) } label: {
                         RecipeRow(recipe: recipe)
                     }
                     .buttonStyle(.plain)
@@ -84,14 +94,6 @@ struct HomeView: View {
 
     private func deleteRecipes(at offsets: IndexSet) {
         for index in offsets { recipes[index].delete(from: context) }
-    }
-
-    // MARK: Creating
-
-    // The recipe replaces the paste screen so Back returns home.
-    private func createRecipe(from text: String) {
-        let recipe = Recipe.create(from: text, in: context)
-        path = [.recipe(recipe)]
     }
 }
 

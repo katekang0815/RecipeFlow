@@ -14,6 +14,14 @@ extension Recipe {
         title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Recipe.untitledTitle : title
     }
 
+    /// True when nothing has been put into the recipe: no title, no ingredients, steps or notes, no link.
+    var isBlank: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && ingredients.isEmpty && steps.isEmpty
+            && note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (sourceURL ?? "").isEmpty
+    }
+
     /// Parses `text` and saves the result as a new recipe with its ingredients and steps.
     @discardableResult
     static func create(from text: String, in context: ModelContext) -> Recipe {

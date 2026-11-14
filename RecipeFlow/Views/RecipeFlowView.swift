@@ -6,11 +6,14 @@
 import SwiftUI
 import SwiftData
 
-/// A saved recipe. The title and the Ingredients, Steps and Notes cards are edited in place:
-/// tap one and type, with no edit icon. Each of those cards has a photo icon for adding by photo,
-/// empty or not. The source link has its own add and edit buttons.
+/// A recipe. A new recipe opens here empty: the title and the Ingredients, Steps and Notes cards are
+/// filled in place, by tapping one and typing, with no edit icon. Each card also has a photo icon for
+/// adding by photo, empty or not, so every section can come from its own photo. The source link has
+/// its own add and edit buttons.
 struct RecipeFlowView: View {
     var recipe: Recipe
+    /// Called when the screen goes away, after the title and the open card have been saved.
+    var onLeave: () -> Void = {}
 
     @Environment(\.modelContext) private var context
 
@@ -38,8 +41,9 @@ struct RecipeFlowView: View {
 
     @State private var showLinkEditor = false
 
-    init(recipe: Recipe) {
+    init(recipe: Recipe, onLeave: @escaping () -> Void = {}) {
         self.recipe = recipe
+        self.onLeave = onLeave
         _titleDraft = State(initialValue: recipe.title)
     }
 
@@ -96,6 +100,7 @@ struct RecipeFlowView: View {
         .onDisappear {
             saveTitle()
             finishEditing(discardInvalid: true)
+            onLeave()
         }
         .photoTextSource(isChoosing: $choosingPhoto, onOutcome: handlePhoto)
         .sheet(isPresented: $showLinkEditor) {
@@ -110,12 +115,12 @@ struct RecipeFlowView: View {
     // MARK: Title
 
     /// The title is the text field itself, so tapping it edits it and there is no edit icon.
-    /// An empty title shows "Untitled recipe" faded, as a hint that it can be typed over.
+    /// An empty title shows "Title" faded, as a hint that it can be typed over.
     private var titleField: some View {
         TextField(
             "",
             text: $titleDraft,
-            prompt: Text(Recipe.untitledTitle).foregroundStyle(Theme.ink.opacity(0.45)),
+            prompt: Text("Title").foregroundStyle(Theme.ink.opacity(0.45)),
             axis: .vertical
         )
         .font(.system(size: 30, weight: .bold))
@@ -198,11 +203,12 @@ struct RecipeFlowView: View {
             photoTarget = section
             choosingPhoto = true
         } label: {
-            PhotoAddIcon()
-                .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Theme.ink))
+            // Just the lines, in the ink color: no circle behind it.
+            ScanIcon()
+                .foregroundStyle(Theme.ink)
+                .frame(width: 28, height: 28)
+                .frame(width: 44, height: 44, alignment: .trailing)
+                .contentShape(Rectangle())
         }
         .accessibilityLabel("Add \(section.noun) from a photo")
         .accessibilityIdentifier("add\(section.noun.capitalized)PhotoButton")
