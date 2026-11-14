@@ -118,30 +118,24 @@ struct TextCaptureView<Trailing: View>: View {
 
     private func scan(_ item: PhotosPickerItem) async {
         defer { pickerItem = nil }
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: data) else {
-            scanMessage = "Couldn't open that photo."
-            return
-        }
-        await scan(image)
+        isScanning = true
+        await show(await PhotoText.read(item))
     }
 
-    /// Runs OCR on a photo and appends the result to the text field,
-    /// so the user can fix any misread characters before going on.
     private func scan(_ image: UIImage) async {
         isScanning = true
-        scanMessage = nil
-        defer { isScanning = false }
+        await show(await PhotoText.read(image))
+    }
 
-        do {
-            let recognized = try await TextRecognizer.recognize(in: image)
-            if recognized.isEmpty {
-                scanMessage = "No text found in that photo."
-            } else {
-                text = trimmed.isEmpty ? recognized : trimmed + "\n" + recognized
-            }
-        } catch {
-            scanMessage = "Couldn't read that photo."
+    /// Appends the recognized text to the field, so the user can fix any misread characters.
+    private func show(_ outcome: PhotoText.Outcome) async {
+        isScanning = false
+        switch outcome {
+        case .text(let recognized):
+            scanMessage = nil
+            text = trimmed.isEmpty ? recognized : trimmed + "\n" + recognized
+        case .problem(let message):
+            scanMessage = message
         }
     }
 }

@@ -276,45 +276,75 @@ final class RecipeFlowUITests: XCTestCase {
         editor.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.95)).tap()
     }
 
+    /// Ends editing a card: the Done button above the keyboard.
+    private func tapDone(_ app: XCUIApplication) {
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    }
+
+    /// The text field a card turns into while it is edited: "ingredients", "steps" or "notes".
+    private func cardEditor(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.descendants(matching: .any)["\(name)Editor"]
+    }
+
     @MainActor
-    func testAddStepsToARecipeThatHasOnlyIngredients() throws {
+    func testEmptyCardsHaveAPhotoIconAndFilledCardsHaveNoIcon() throws {
         let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
         XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
 
-        // Empty section: +. Section with content: pencil.
-        XCTAssertTrue(app.buttons["addStepsButton"].exists)
-        XCTAssertFalse(app.buttons["editStepsButton"].exists)
-        XCTAssertTrue(app.buttons["editIngredientsButton"].exists)
-        XCTAssertFalse(app.buttons["addIngredientsButton"].exists)
-        snap(app, "16-plus-on-empty-steps")
-        app.buttons["addStepsButton"].tap()
+        // Empty cards: the photo icon. Filled card: nothing, and no pencil or + anywhere on the cards.
+        XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists)
+        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
+        XCTAssertFalse(app.buttons["addIngredientsPhotoButton"].exists)
+        for old in ["addStepsButton", "editStepsButton", "addIngredientsButton", "editIngredientsButton", "addNotesButton", "editNotesButton"] {
+            XCTAssertFalse(app.buttons[old].exists, old)
+        }
+        // The source link keeps its own + button.
+        XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
+        snap(app, "16-photo-icon-on-empty-cards")
+    }
 
-        let editor = app.textViews["sectionEditorText"]
+    @MainActor
+    func testThePhotoIconOffersTheLibraryButNoCameraInTheSimulator() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        XCTAssertTrue(app.buttons["addStepsPhotoButton"].waitForExistence(timeout: 5))
+        app.buttons["addStepsPhotoButton"].tap()
+
+        XCTAssertTrue(app.buttons["Choose from library"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Take photo"].exists, "the Simulator has no camera")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testStepsAreAddedByTappingTheEmptyCard() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
+        app.staticTexts["No steps found"].tap()
+
+        let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Add steps"].exists)
-        let save = app.buttons["saveSectionButton"]
-        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
 
-        // Text with no numbered line is not steps.
+        // Text with no numbered line is not steps, and the card says so.
         editor.typeText("Mix it")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("No numbered steps found"))
-        XCTAssertFalse(save.isEnabled)
 
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
         editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["2 steps found."].waitForExistence(timeout: 5))
-        XCTAssertTrue(save.isEnabled)
-        snap(app, "17-add-steps")
-        save.tap()
+        snap(app, "17-typing-steps-in-the-card")
+        tapDone(app)
 
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
         XCTAssertFalse(app.staticTexts["No steps found"].exists)
+        XCTAssertFalse(app.buttons["addStepsPhotoButton"].exists, "the photo icon goes once there are steps")
         XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
-        XCTAssertTrue(app.buttons["editStepsButton"].exists, "pencil replaces the +")
-        XCTAssertFalse(app.buttons["addStepsButton"].exists)
         snap(app, "18-steps-added")
 
         app.navigationBars.buttons.firstMatch.tap()
@@ -324,28 +354,26 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testEditStepsShowsTheCurrentTextAndSavesChangesOnlyToSteps() throws {
+    func testTappingTheStepsEditsThemInPlaceAndOnlyTheStepsAreSaved() throws {
         let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
+        app.staticTexts["Mix the flour and water"].tap()
 
-        app.buttons["editStepsButton"].tap()
-        let editor = app.textViews["sectionEditorText"]
+        let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Edit steps"].exists)
         let current = editor.value as? String ?? ""
         XCTAssertTrue(current.contains("1. Mix the flour and water"))
         XCTAssertTrue(current.contains("2. Bake for 20 minutes"))
 
-        // Add a step, and some ingredients that this screen must leave out.
+        // Add a step, and some ingredients that this card must leave out.
         tapEnd(of: editor)
         editor.typeText("\n3. Cool on a rack.\nIngredients\n2 cups flour")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("3 steps found."))
         XCTAssertTrue(message.label.contains("1 ingredient in this text will not be added."))
-        snap(app, "19-edit-steps")
-        app.buttons["saveSectionButton"].tap()
+        snap(app, "19-editing-steps-in-place")
+        tapDone(app)
 
         XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].exists)
@@ -353,89 +381,126 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testAddIngredientsToARecipeThatHasOnlySteps() throws {
+    func testIngredientsAreAddedInPlaceWithoutAHeading() throws {
         let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["addIngredientsButton"].exists)
-        app.buttons["addIngredientsButton"].tap()
+        app.staticTexts["No ingredients found"].tap()
 
-        let editor = app.textViews["sectionEditorText"]
+        let editor = cardEditor(app, "ingredients")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Add ingredients"].exists)
         // No "Ingredients" heading is needed, and a line with no amount counts.
         editor.typeText("salt\n2 cups flour")
         XCTAssertTrue(app.staticTexts["2 ingredients found."].waitForExistence(timeout: 5))
-        app.buttons["saveSectionButton"].tap()
+        tapDone(app)
 
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["salt"].exists)
-        XCTAssertFalse(app.staticTexts["No ingredients found"].exists)
-        XCTAssertTrue(app.buttons["editIngredientsButton"].exists)
-        XCTAssertFalse(app.buttons["addIngredientsButton"].exists)
+        XCTAssertFalse(app.buttons["addIngredientsPhotoButton"].exists)
         XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists, "the steps are untouched")
     }
 
     @MainActor
-    func testCancelLeavesTheSectionAsItWas() throws {
-        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water")
-        XCTAssertTrue(app.buttons["addStepsButton"].waitForExistence(timeout: 5))
-        app.buttons["addStepsButton"].tap()
+    func testClearingACardEmptiesItAndBringsBackThePhotoIcon() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
+        app.staticTexts["2 cups flour"].tap()
 
-        let editor = app.textViews["sectionEditorText"]
+        let editor = cardEditor(app, "ingredients")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.typeText("1. Mix it.")
-        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        tapEnd(of: editor)
+        // "2 cups flour" + "1 cup water" + "3 eggs" and two line breaks: 31 characters.
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 31))
+        tapDone(app)
 
-        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["addStepsButton"].exists)
+        XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("0 ingredients · 0 steps"))
     }
 
     @MainActor
-    func testNotesCardIsAlwaysThereAndCanBeAddedAndEdited() throws {
+    func testTextWithNothingValidIsNotSaved() throws {
+        let app = launchWithRecipe("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        app.staticTexts["Mix the flour and water"].tap()
+
+        let editor = cardEditor(app, "steps")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        tapEnd(of: editor)
+        // "1. Mix the flour and water" + "2. Bake for 20 minutes" and a line break: 48 characters.
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 48))
+        editor.typeText("Mix it")
+        tapDone(app)
+
+        // It stays on screen with its message instead of replacing the steps.
+        XCTAssertTrue(cardEditor(app, "steps").exists)
+        XCTAssertTrue(app.staticTexts["sectionEditorMessage"].label.contains("No numbered steps found"))
+
+        // Leaving the screen drops it, and the saved steps are as they were.
+        app.navigationBars.buttons.firstMatch.tap()
+        let row = app.buttons["recipeRow"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("0 ingredients · 2 steps"))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
+    }
+
+    @MainActor
+    func testTappingAnotherCardSavesTheOneBeingEdited() throws {
+        let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\n3 eggs")
+        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
+        app.staticTexts["No steps found"].tap()
+        let steps = cardEditor(app, "steps")
+        XCTAssertTrue(steps.waitForExistence(timeout: 5))
+        steps.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+
+        // No Done: tap the ingredients card straight away.
+        app.staticTexts["2 cups flour"].tap()
+        XCTAssertTrue(cardEditor(app, "ingredients").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5), "the steps were saved")
+        XCTAssertFalse(cardEditor(app, "steps").exists)
+    }
+
+    @MainActor
+    func testNotesAreTypedInPlaceAndSitBetweenStepsAndSourceLink() throws {
         let app = launchWithRecipe("Ingredients\n2 cups flour\n1 cup water\nDirections\n1. Mix the flour and water.\n2. Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
 
-        // An empty Notes card sits between Steps and Source link, with a + like the other cards.
         let steps = app.staticTexts["Steps"], notes = app.staticTexts["Notes"], link = app.staticTexts["Source link"]
-        XCTAssertTrue(notes.exists)
         XCTAssertTrue(steps.frame.minY < notes.frame.minY && notes.frame.minY < link.frame.minY, "Notes is between Steps and Source link")
-        XCTAssertTrue(app.staticTexts["No notes yet"].exists)
-        XCTAssertTrue(app.buttons["addNotesButton"].exists)
-        XCTAssertFalse(app.buttons["editNotesButton"].exists)
-        snap(app, "20-empty-notes-card")
-        app.buttons["addNotesButton"].tap()
+        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
+        app.staticTexts["No notes yet"].tap()
 
-        let editor = app.textViews["sectionEditorText"]
+        let editor = cardEditor(app, "notes")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Add notes"].exists)
-        let save = app.buttons["saveSectionButton"]
-        XCTAssertFalse(save.isEnabled, "nothing to save yet")
-        XCTAssertTrue(app.buttons["addPhotoButton"].exists, "Add photo is on the notes screen too")
         editor.typeText("Rest the dough overnight.")
-        XCTAssertTrue(save.isEnabled)
-        save.tap()
+        tapDone(app)
 
-        // The note is kept as written, and the + becomes a pencil.
-        XCTAssertTrue(app.staticTexts["Rest the dough overnight."].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["No notes yet"].exists)
-        XCTAssertTrue(app.buttons["editNotesButton"].exists)
-        XCTAssertFalse(app.buttons["addNotesButton"].exists)
+        // The note is kept as written, and the photo icon goes.
+        let card = app.staticTexts["noteText"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertEqual(card.label, "Rest the dough overnight.")
+        XCTAssertFalse(app.buttons["addNotesPhotoButton"].exists)
 
-        // Edit shows the current note, and a line can be added to it.
-        app.buttons["editNotesButton"].tap()
-        let edit = app.textViews["sectionEditorText"]
+        // Tap the note to edit it, and add a line.
+        card.tap()
+        let edit = cardEditor(app, "notes")
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.navigationBars["Edit notes"].exists)
         XCTAssertTrue((edit.value as? String ?? "").contains("Rest the dough overnight."))
         tapEnd(of: edit)
         edit.typeText("\nServe warm.")
-        app.buttons["saveSectionButton"].tap()
+        tapDone(app)
 
-        let card = app.staticTexts["noteText"]
-        XCTAssertTrue(card.waitForExistence(timeout: 5))
-        XCTAssertTrue(card.label.contains("Rest the dough overnight."))
-        XCTAssertTrue(card.label.contains("Serve warm."))
-        snap(app, "21-notes-card-filled")
+        let both = app.staticTexts["noteText"]
+        XCTAssertTrue(both.waitForExistence(timeout: 5))
+        XCTAssertTrue(both.label.contains("Rest the dough overnight."))
+        XCTAssertTrue(both.label.contains("Serve warm."))
+        snap(app, "21-notes-edited-in-place")
     }
 
     /// Puts the cursor at the end of the title by tapping the right end of its first line.
