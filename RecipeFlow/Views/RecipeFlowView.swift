@@ -77,12 +77,6 @@ struct RecipeFlowView: View {
         .navigationTitle("Recipe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focus = nil }
-            }
-        }
         .onChange(of: focus) { old, new in
             if old == .title, new != .title { saveTitle() }
             if let request = focusRequest {

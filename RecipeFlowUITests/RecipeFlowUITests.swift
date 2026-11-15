@@ -53,11 +53,10 @@ final class RecipeFlowUITests: XCTestCase {
         app.descendants(matching: .any)["\(name)Editor"]
     }
 
-    /// Ends editing a card: the Done button above the keyboard.
+    /// Ends editing a card: there is no Done button, so drag the page down to close the keyboard.
     private func tapDone(_ app: XCUIApplication) {
-        let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5))
-        done.tap()
+        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+        from.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 
@@ -455,7 +454,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(steps.waitForExistence(timeout: 5))
         steps.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
 
-        // No Done: tap the ingredients card straight away.
+        // No closing the keyboard: tap the ingredients card straight away.
         app.staticTexts["2 cups flour"].tap()
         XCTAssertTrue(cardEditor(app, "ingredients").waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5), "the steps were saved")
@@ -552,6 +551,42 @@ final class RecipeFlowUITests: XCTestCase {
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Untitled recipe"))
+    }
+
+    // MARK: Search
+
+    @MainActor
+    func testSearchFiltersTheCardsByTitleAndEmptyTextShowsAll() throws {
+        let app = launchApp()
+        for name in ["Soup", "Bread"] {
+            openNewRecipe(app)
+            typeTitle(app, name)
+            app.navigationBars.buttons.firstMatch.tap()
+            XCTAssertTrue(app.buttons["searchButton"].waitForExistence(timeout: 5))
+        }
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
+        XCTAssertFalse(app.textFields["searchField"].exists, "the field is hidden until the icon is tapped")
+
+        app.buttons["searchButton"].tap()
+        let field = app.textFields["searchField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        field.typeText("sou")
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1)
+        XCTAssertTrue(app.buttons["recipeRow"].firstMatch.label.contains("Soup"))
+        snap(app, "5-search")
+
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2, "no input filters nothing")
+
+        field.typeText("zzz")
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 0)
+        XCTAssertTrue(app.buttons["addRecipeButton"].exists)
+
+        // Closing the field clears the search.
+        app.buttons["searchButton"].tap()
+        XCTAssertFalse(field.exists)
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
     }
 
     // MARK: The source link
