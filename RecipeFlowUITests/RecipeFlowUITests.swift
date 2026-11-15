@@ -39,7 +39,7 @@ final class RecipeFlowUITests: XCTestCase {
     /// Launches with no saved recipes: the tests use a store that lives only in memory.
     private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-inMemoryStore"]
+        app.launchArguments = ["-inMemoryStore", "-fakePhoto"]
         app.launch()
         return app
     }
@@ -92,8 +92,26 @@ final class RecipeFlowUITests: XCTestCase {
         tapDone(app)
     }
 
-    /// Starts with no saved recipes, taps Add, and fills in the recipe the way a user does:
-    /// by typing into each part of the screen that is given.
+    /// Adds a recipe card from the home screen: the plus, then a picture from the library.
+    private func addCard(_ app: XCUIApplication) {
+        let add = app.buttons["addRecipeButton"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+        let library = app.buttons["Choose from library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+        library.tap()
+        XCTAssertTrue(app.buttons["recipeRow"].firstMatch.waitForExistence(timeout: 5))
+    }
+
+    /// Adds a recipe card and opens it.
+    private func openNewRecipe(_ app: XCUIApplication) {
+        addCard(app)
+        app.buttons["recipeRow"].firstMatch.tap()
+        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
+    }
+
+    /// Starts with no saved recipes, adds a card with a picture, opens it, and fills in the recipe
+    /// the way a user does: by typing into each part of the screen that is given.
     private func launchWithRecipe(
         title: String? = nil,
         ingredients: String? = nil,
@@ -101,8 +119,7 @@ final class RecipeFlowUITests: XCTestCase {
         notes: String? = nil
     ) -> XCUIApplication {
         let app = launchApp()
-        app.buttons["Add"].tap()
-        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
+        openNewRecipe(app)
 
         if let title { typeTitle(app, title) }
         if let ingredients { fill(app, card: "ingredients", hint: "No ingredients found", with: ingredients) }
@@ -129,40 +146,52 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: Adding a recipe
 
     @MainActor
-    func testAddOpensAnEmptyRecipeScreenWithATitleHint() throws {
+    func testTheEmptyHomeScreenHasJustAPlusAndItAsksForAThumbnail() throws {
         let app = launchApp()
+        XCTAssertTrue(app.staticTexts["My Recipes"].exists)
+        XCTAssertFalse(app.buttons["recipeRow"].exists)
         snap(app, "1-home")
-        app.buttons["Add"].tap()
 
-        // The title shows "Title", not "Untitled recipe", and every section is empty.
+        app.buttons["addRecipeButton"].tap()
+        XCTAssertTrue(app.staticTexts["Add a thumbnail"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Choose from library"].exists)
+        // Backing out adds nothing.
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.buttons["recipeRow"].exists)
+    }
+
+    @MainActor
+    func testAPictureMakesACardAndTappingTheCardOpensAnEmptyRecipe() throws {
+        let app = launchApp()
+        addCard(app)
+        // Adding the picture stays on the home screen, and the plus moves after the card.
+        XCTAssertFalse(titleField(app).exists)
+        XCTAssertTrue(app.buttons["addRecipeButton"].exists)
+        snap(app, "2-home-with-card")
+
+        app.buttons["recipeRow"].firstMatch.tap()
         let title = titleField(app)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Title")
-        XCTAssertFalse(app.staticTexts["Untitled recipe"].exists)
+        XCTAssertEqual(title.value as? String, "Add Title")
         XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
         XCTAssertTrue(app.staticTexts["No steps found"].exists)
         XCTAssertTrue(app.staticTexts["No notes yet"].exists)
         XCTAssertTrue(app.staticTexts["Add a source link"].exists)
 
-        // A photo icon for each of the three cards, and the source link's own +.
+        // A plus after each of the three headings, and the source link's own.
         XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
         XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists)
         XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
         XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
-        snap(app, "2-new-recipe")
+        snap(app, "3-new-recipe")
     }
 
     @MainActor
-    func testGoingBackFromARecipeThatStayedEmptyKeepsNothing() throws {
+    func testEachNewPictureAddsAnotherCard() throws {
         let app = launchApp()
-        app.buttons["Add"].tap()
-        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
-        app.navigationBars.buttons.firstMatch.tap()
-
-        // Back on a home screen with no recipes: just the Add button.
-        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["My recipes"].waitForNonExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["recipeRow"].exists)
+        addCard(app)
+        addCard(app)
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
     }
 
     @MainActor
@@ -179,9 +208,8 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testATitleStillBeingTypedWhenGoingBackIsKept() throws {
         let app = launchApp()
-        app.buttons["Add"].tap()
+        openNewRecipe(app)
         let title = titleField(app)
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
         title.tap()
         waitForKeyboard(app)
         title.typeText("Soup")  // no Return, no Done
@@ -504,7 +532,7 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water", steps: "1. Mix.\n2. Bake.")
         let title = titleField(app)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Title", "the faded hint")
+        XCTAssertEqual(title.value as? String, "Add Title", "the faded hint")
         snap(app, "11-title-hint")
 
         title.tap()
@@ -519,7 +547,7 @@ final class RecipeFlowUITests: XCTestCase {
         title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 11))
         title.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        XCTAssertEqual(title.value as? String, "Title")
+        XCTAssertEqual(title.value as? String, "Add Title")
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
@@ -579,7 +607,7 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: The list
 
     @MainActor
-    func testSwipeToDeleteRemovesASavedRecipe() throws {
+    func testHoldingACardOffersDelete() throws {
         let app = launchWithRecipe(
             title: "Toast",
             ingredients: "2 slices bread\n1 tbsp butter",
@@ -591,9 +619,9 @@ final class RecipeFlowUITests: XCTestCase {
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
 
-        row.swipeLeft()
+        row.press(forDuration: 1)
         app.buttons["Delete"].tap()
-        XCTAssertTrue(app.buttons["Add"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["recipeRow"].exists, "list is empty again")
+        XCTAssertTrue(app.buttons["recipeRow"].waitForNonExistence(timeout: 5), "the card is gone")
+        XCTAssertTrue(app.buttons["addRecipeButton"].exists)
     }
 }

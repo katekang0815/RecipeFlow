@@ -7,13 +7,11 @@ import SwiftUI
 import SwiftData
 
 /// A recipe. A new recipe opens here empty: the title and the Ingredients, Steps and Notes cards are
-/// filled in place, by tapping one and typing, with no edit icon. Each card also has a photo icon for
+/// filled in place, by tapping one and typing, with no edit icon. Each card also has a plus after its heading for
 /// adding by photo, empty or not, so every section can come from its own photo. The source link has
 /// its own add and edit buttons.
 struct RecipeFlowView: View {
     var recipe: Recipe
-    /// Called when the screen goes away, after the title and the open card have been saved.
-    var onLeave: () -> Void = {}
 
     @Environment(\.modelContext) private var context
 
@@ -41,9 +39,8 @@ struct RecipeFlowView: View {
 
     @State private var showLinkEditor = false
 
-    init(recipe: Recipe, onLeave: @escaping () -> Void = {}) {
+    init(recipe: Recipe) {
         self.recipe = recipe
-        self.onLeave = onLeave
         _titleDraft = State(initialValue: recipe.title)
     }
 
@@ -100,7 +97,6 @@ struct RecipeFlowView: View {
         .onDisappear {
             saveTitle()
             finishEditing(discardInvalid: true)
-            onLeave()
         }
         .photoTextSource(isChoosing: $choosingPhoto, onOutcome: handlePhoto)
         .sheet(isPresented: $showLinkEditor) {
@@ -115,12 +111,12 @@ struct RecipeFlowView: View {
     // MARK: Title
 
     /// The title is the text field itself, so tapping it edits it and there is no edit icon.
-    /// An empty title shows "Title" faded, as a hint that it can be typed over.
+    /// An empty title shows "Add Title" faded, as a hint that it can be typed over.
     private var titleField: some View {
         TextField(
             "",
             text: $titleDraft,
-            prompt: Text("Title").foregroundStyle(Theme.ink.opacity(0.45)),
+            prompt: Text("Add Title").foregroundStyle(Theme.ink.opacity(0.45)),
             axis: .vertical
         )
         .font(.system(size: 30, weight: .bold))
@@ -167,17 +163,17 @@ struct RecipeFlowView: View {
         .accessibilityIdentifier(title.lowercased() + "Section")
     }
 
-    /// A card that is edited by tapping it. Its heading has a photo icon for adding more by photo.
+    /// A card that is edited by tapping it. Its heading has a plus for adding more by photo.
     private func editableSection<Content: View>(
         _ section: RecipeSection,
         _ title: String,
         @ViewBuilder display: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 0) {
                 heading(title)
-                Spacer()
                 photoButton(for: section)
+                Spacer()
             }
 
             if editing == section {
@@ -203,11 +199,11 @@ struct RecipeFlowView: View {
             photoTarget = section
             choosingPhoto = true
         } label: {
-            // Just the lines, in the ink color: no circle behind it.
-            ScanIcon()
+            // A bare plus in the ink color, right after the heading: no circle behind it.
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(Theme.ink)
-                .frame(width: 28, height: 28)
-                .frame(width: 44, height: 44, alignment: .trailing)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Add \(section.noun) from a photo")

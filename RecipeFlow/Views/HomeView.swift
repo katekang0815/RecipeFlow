@@ -10,121 +10,117 @@ struct HomeView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Recipe.createdAt, order: .reverse) private var recipes: [Recipe]
     @State private var path: [Recipe] = []
-    /// The recipe that Add just made. If the user comes back without putting anything in it,
-    /// it is not kept.
-    @State private var newRecipe: Recipe?
+    @State private var choosingThumbnail = false
+
+    private let margin: CGFloat = 16
+    private let gap: CGFloat = 12
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                if recipes.isEmpty {
-                    addButton
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    recipeList
+            GeometryReader { geometry in
+                let side = (geometry.size.width - margin * 2 - gap) / 2
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("My Recipes")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(Theme.ink)
+                            .padding(.horizontal, 4)
+
+                        if recipes.isEmpty {
+                            // Nothing yet: just the plus, in the middle of the page.
+                            addCard
+                                .frame(width: side, height: side)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, max(0, geometry.size.height / 2 - side - 80))
+                        } else {
+                            LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
+                                ForEach(recipes) { recipe in
+                                    card(for: recipe).frame(height: side)
+                                }
+                                addCard.frame(height: side)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, margin)
+                    .padding(.top, 16)
                 }
             }
             .background(Theme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Recipe.self) { recipe in
-                // The recipe screen saves what was typed before it says it was left,
-                // so this is the time to check whether anything was.
-                RecipeFlowView(recipe: recipe, onLeave: dropNewRecipeIfBlank)
+                RecipeFlowView(recipe: recipe)
             }
         }
         .tint(Theme.ink)
+        .photoSource(title: "Add a thumbnail", isChoosing: $choosingThumbnail, onImage: addRecipe)
     }
 
-    /// Add opens an empty recipe straight away; each section is filled in on that screen.
-    private var addButton: some View {
-        Button(action: addRecipe) {
-            Label("Add", systemImage: "plus")
+    /// The plus card: choose a picture, and it becomes a new recipe card.
+    private var addCard: some View {
+        Button { choosingThumbnail = true } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16).fill(Theme.field)
+                Image(systemName: "plus")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+            }
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PrimaryButtonStyle())
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add")
+        .accessibilityIdentifier("addRecipeButton")
     }
 
-    private func addRecipe() {
+    /// A picture that could not be opened adds nothing.
+    private func addRecipe(thumbnail image: UIImage?) {
+        guard let image, let data = Recipe.thumbnailData(from: image) else { return }
         let recipe = Recipe()
         context.insert(recipe)
-        newRecipe = recipe
-        path.append(recipe)
+        recipe.thumbnail = data
     }
 
-    /// Only once the recipe screen is really gone: it also reports leaving while the camera covers it.
-    private func dropNewRecipeIfBlank() {
-        guard let recipe = newRecipe, !path.contains(where: { $0 === recipe }) else { return }
-        newRecipe = nil
-        if recipe.isBlank { recipe.delete(from: context) }
-    }
-
-    // MARK: Saved recipes
-
-    private var recipeList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("My recipes")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundStyle(Theme.ink)
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-
-            List {
-                ForEach(recipes) { recipe in
-                    Button { path.append(recipe) } label: {
-                        RecipeRow(recipe: recipe)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("recipeRow")
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                }
-                .onDelete(perform: deleteRecipes)
+    private func card(for recipe: Recipe) -> some View {
+        Button { path.append(recipe) } label: {
+            RecipeCard(recipe: recipe)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(recipe.displayTitle + ", " + summary(of: recipe))
+        .accessibilityIdentifier("recipeRow")
+        .contextMenu {
+            Button(role: .destructive) { recipe.delete(from: context) } label: {
+                Label("Delete", systemImage: "trash")
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .accessibilityIdentifier("recipeList")
-        }
-        .safeAreaInset(edge: .bottom) {
-            addButton
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Theme.background)
         }
     }
 
-    private func deleteRecipes(at offsets: IndexSet) {
-        for index in offsets { recipes[index].delete(from: context) }
+    private func summary(of recipe: Recipe) -> String {
+        let ingredients = recipe.ingredients.count
+        let steps = recipe.steps.count
+        return "\(ingredients) ingredient\(ingredients == 1 ? "" : "s") · \(steps) step\(steps == 1 ? "" : "s")"
     }
 }
 
-private struct RecipeRow: View {
+/// A recipe's thumbnail. A recipe without one shows its title.
+private struct RecipeCard: View {
     let recipe: Recipe
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(recipe.displayTitle)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                Text(summary)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink.opacity(0.6))
+        Color.clear
+            .overlay {
+                if let image = recipe.thumbnailImage {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Theme.field.overlay {
+                        Text(recipe.displayTitle)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                            .multilineTextAlignment(.center)
+                            .padding(12)
+                    }
+                }
             }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.ink.opacity(0.4))
-        }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-        .contentShape(Rectangle())
-    }
-
-    private var summary: String {
-        let ingredients = recipe.ingredients.count
-        let steps = recipe.steps.count
-        let date = recipe.createdAt.formatted(date: .abbreviated, time: .omitted)
-        return "\(ingredients) ingredient\(ingredients == 1 ? "" : "s") · \(steps) step\(steps == 1 ? "" : "s") · \(date)"
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 

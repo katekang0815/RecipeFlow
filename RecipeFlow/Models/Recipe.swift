@@ -17,6 +17,8 @@ final class Recipe {
     var note: String = ""
     /// Where the recipe came from, e.g. a YouTube link. Always an http(s) address.
     var sourceURL: String?
+    /// The picture on the recipe's card on the home screen, as JPEG data.
+    @Attribute(.externalStorage) var thumbnail: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \Ingredient.recipe)
     var ingredients: [Ingredient] = []
