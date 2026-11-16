@@ -37,9 +37,14 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     /// Launches with no saved recipes: the tests use a store that lives only in memory.
-    private func launchApp() -> XCUIApplication {
+    /// `photoText` is what a photo of each section "contains" (keys "ingredients", "steps", "notes"),
+    /// since the system photo picker and the camera cannot be driven from a test.
+    private func launchApp(photoText: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-inMemoryStore", "-fakePhoto"]
+        for (section, text) in photoText {
+            app.launchArguments += ["-fakePhotoText.\(section)", text.replacingOccurrences(of: "\n", with: "⏎")]
+        }
         app.launch()
         return app
     }
@@ -53,10 +58,18 @@ final class RecipeFlowUITests: XCTestCase {
         app.descendants(matching: .any)["\(name)Editor"]
     }
 
-    /// Ends editing a card: there is no Done button, so drag the page down to close the keyboard.
+    /// Ends editing a card: there is no Done button, so tap the empty page in the gap just above the
+    /// plus (or, when the keyboard covers that, drag the page down).
     private func tapDone(_ app: XCUIApplication) {
-        let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
-        from.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        let plus = app.buttons["addSectionButton"]
+        let keyboardTop = app.keyboards.firstMatch.frame.minY
+        let y = plus.frame.minY - 12
+        if plus.exists, plus.frame.maxY < keyboardTop - 10 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y / app.frame.height)).tap()
+        } else {
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            from.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
+        }
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 
@@ -79,15 +92,25 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 
-    /// Taps an empty card, types into it, and ends editing.
-    private func fill(_ app: XCUIApplication, card name: String, hint: String, with text: String) {
-        let empty = app.staticTexts[hint]
-        XCTAssertTrue(empty.waitForExistence(timeout: 5))
-        empty.tap()
-        let editor = cardEditor(app, name)
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+    /// Adds a section from the plus on the recipe screen: the plus, the section, then a photo from the
+    /// library. The section opens for checking with the photo's text in it. "Ingredients", "Steps", "Notes".
+    private func addSection(_ app: XCUIApplication, _ name: String) {
+        let plus = app.buttons["addSectionButton"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+        plus.tap()
+        let option = app.buttons[name]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        option.tap()
+        let library = app.buttons["Choose from library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+        library.tap()
+        XCTAssertTrue(cardEditor(app, name.lowercased()).waitForExistence(timeout: 5))
+    }
+
+    /// Adds a section from a photo and saves it by closing the keyboard.
+    private func fill(_ app: XCUIApplication, _ name: String) {
+        addSection(app, name)
         waitForKeyboard(app)
-        editor.typeText(text)
         tapDone(app)
     }
 
@@ -110,20 +133,24 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     /// Starts with no saved recipes, adds a card with a picture, opens it, and fills in the recipe
-    /// the way a user does: by typing into each part of the screen that is given.
+    /// the way a user does: the title by typing, each section from a photo.
     private func launchWithRecipe(
         title: String? = nil,
         ingredients: String? = nil,
         steps: String? = nil,
         notes: String? = nil
     ) -> XCUIApplication {
-        let app = launchApp()
+        var photoText: [String: String] = [:]
+        if let ingredients { photoText["ingredients"] = ingredients }
+        if let steps { photoText["steps"] = steps }
+        if let notes { photoText["notes"] = notes }
+        let app = launchApp(photoText: photoText)
         openNewRecipe(app)
 
         if let title { typeTitle(app, title) }
-        if let ingredients { fill(app, card: "ingredients", hint: "No ingredients found", with: ingredients) }
-        if let steps { fill(app, card: "steps", hint: "No steps found", with: steps) }
-        if let notes { fill(app, card: "notes", hint: "No notes yet", with: notes) }
+        if ingredients != nil { fill(app, "Ingredients") }
+        if steps != nil { fill(app, "Steps") }
+        if notes != nil { fill(app, "Notes") }
         return app
     }
 
@@ -172,16 +199,12 @@ final class RecipeFlowUITests: XCTestCase {
         let title = titleField(app)
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         XCTAssertEqual(title.value as? String, "Add Title")
-        XCTAssertTrue(app.staticTexts["No ingredients found"].exists)
-        XCTAssertTrue(app.staticTexts["No steps found"].exists)
-        XCTAssertTrue(app.staticTexts["No notes yet"].exists)
-        XCTAssertTrue(app.staticTexts["Add a source link"].exists)
 
-        // A plus after each of the three headings, and the source link's own.
-        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
-        XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists)
-        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
-        XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
+        // No sections yet: just the one plus.
+        for heading in ["Ingredients", "Steps", "Notes", "Source link"] {
+            XCTAssertFalse(app.staticTexts[heading].exists, heading)
+        }
+        XCTAssertTrue(app.buttons["addSectionButton"].exists)
         snap(app, "3-new-recipe")
     }
 
@@ -271,60 +294,77 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "5-bulleted-steps")
     }
 
-    // MARK: The photo icon
+    // MARK: The plus
 
     @MainActor
-    func testEveryCardHasAPhotoIconWhetherItIsEmptyOrNot() throws {
+    func testThePlusDropsDownTheFourSections() throws {
         let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
-        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
-
-        // The photo icon is on every card, the filled Ingredients card included, so more can be added later.
-        XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists)
-        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
-        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
-        for old in ["addStepsButton", "editStepsButton", "addIngredientsButton", "editIngredientsButton", "addNotesButton", "editNotesButton"] {
+        app.buttons["addSectionButton"].tap()
+        for option in ["Ingredients", "Steps", "Notes", "Source link"] {
+            XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5), option)
+        }
+        snap(app, "6-plus-menu")
+        // No other add buttons are left on the page.
+        for old in ["addIngredientsPhotoButton", "addStepsPhotoButton", "addNotesPhotoButton", "addSourceLinkButton"] {
             XCTAssertFalse(app.buttons[old].exists, old)
         }
-        // The source link keeps its own + button.
-        XCTAssertTrue(app.buttons["addSourceLinkButton"].exists)
-        snap(app, "6-photo-icon-on-every-card")
     }
 
     @MainActor
-    func testThePhotoIconOffersTheLibraryButNoCameraInTheSimulator() throws {
+    func testSectionsKeepTheirOrderAndThePlusStaysBelowThem() throws {
+        let app = launchApp(photoText: [
+            "ingredients": "2 cups flour\n1 cup water",
+            "steps": "1. Mix the flour and water.\n2. Bake for 20 minutes.",
+            "notes": "Rest the dough overnight.",
+        ])
+        openNewRecipe(app)
+        let plus = app.buttons["addSectionButton"]
+
+        // Steps first: it appears, and the plus moves below it.
+        let plusBefore = plus.frame.minY
+        fill(app, "Steps")
+        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(plus.frame.minY > plusBefore)
+        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes"].frame.maxY)
+
+        // Ingredients next: it goes above Steps, and the plus is still at the bottom.
+        fill(app, "Ingredients")
+        XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Ingredients"].frame.minY < app.staticTexts["Steps"].frame.minY)
+        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes"].frame.maxY)
+
+        fill(app, "Notes")
+        XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Steps"].frame.minY < app.staticTexts["Notes"].frame.minY)
+        XCTAssertTrue(plus.frame.minY > app.staticTexts["noteText"].frame.maxY)
+        snap(app, "7-sections-in-order")
+    }
+
+    @MainActor
+    func testAPhotoOfferedForASectionCanBeCancelledAndAddsNothing() throws {
         let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
-        XCTAssertTrue(app.buttons["addStepsPhotoButton"].waitForExistence(timeout: 5))
-        app.buttons["addStepsPhotoButton"].tap()
+        app.buttons["addSectionButton"].tap()
+        app.buttons["Steps"].tap()
 
         XCTAssertTrue(app.buttons["Choose from library"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Take photo"].exists, "the Simulator has no camera")
         app.buttons["Cancel"].tap()
-        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
-
-        // A card that already has content offers the same choices, and cancelling leaves it as it was.
-        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
-        app.buttons["addIngredientsPhotoButton"].tap()
-        XCTAssertTrue(app.buttons["Choose from library"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Take photo"].exists)
-        app.buttons["Cancel"].tap()
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["3 eggs"].exists)
+        XCTAssertFalse(app.staticTexts["Steps"].exists, "cancelling adds no section")
     }
 
     // MARK: Filling and editing the cards in place
 
     @MainActor
-    func testStepsAreAddedByTappingTheEmptyCard() throws {
-        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
-        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
-        app.staticTexts["No steps found"].tap()
-
+    func testStepsFromAPhotoAreCheckedBeforeTheyAreSaved() throws {
+        let app = launchApp(photoText: ["ingredients": "2 cups flour\n1 cup water\n3 eggs", "steps": "Mix it"])
+        openNewRecipe(app)
+        fill(app, "Ingredients")
+        addSection(app, "Steps")
         let editor = cardEditor(app, "steps")
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
         waitForKeyboard(app)
 
         // Text with no numbered line is not steps, and the card says so.
-        editor.typeText("Mix it")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("No numbered steps found"))
@@ -337,8 +377,7 @@ final class RecipeFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
-        XCTAssertFalse(app.staticTexts["No steps found"].exists)
-        XCTAssertTrue(app.buttons["addStepsPhotoButton"].exists, "the photo icon stays, to add more steps")
+        XCTAssertTrue(app.buttons["addSectionButton"].exists, "the plus stays, to add more")
         XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
 
         app.navigationBars.buttons.firstMatch.tap()
@@ -371,25 +410,24 @@ final class RecipeFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].exists)
-        XCTAssertTrue(app.staticTexts["No ingredients found"].exists, "only the steps were saved")
+        XCTAssertFalse(app.staticTexts["Ingredients"].exists, "only the steps were saved")
     }
 
     @MainActor
-    func testIngredientsAreAddedInPlaceWithoutAHeading() throws {
-        let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
-        XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
-        app.staticTexts["No ingredients found"].tap()
-
-        let editor = cardEditor(app, "ingredients")
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        // No "Ingredients" heading is needed, and a line with no amount counts.
-        editor.typeText("salt\n2 cups flour")
+    func testIngredientsFromAPhotoNeedNoHeading() throws {
+        let app = launchApp(photoText: [
+            "ingredients": "salt\n2 cups flour",
+            "steps": "1. Mix the flour and water.\n2. Bake for 20 minutes.",
+        ])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        // No "Ingredients" heading is needed in the text, and a line with no amount counts.
+        addSection(app, "Ingredients")
         XCTAssertTrue(app.staticTexts["2 ingredients found."].waitForExistence(timeout: 5))
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["salt"].exists)
-        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists, "the photo icon stays, to add more")
         XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists, "the steps are untouched")
     }
 
@@ -407,8 +445,8 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 31))
         tapDone(app)
 
-        XCTAssertTrue(app.staticTexts["No ingredients found"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["addIngredientsPhotoButton"].exists)
+        XCTAssertTrue(app.staticTexts["Ingredients"].waitForNonExistence(timeout: 5), "an emptied section goes away")
+        XCTAssertTrue(app.buttons["addSectionButton"].exists)
         app.navigationBars.buttons.firstMatch.tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
@@ -447,12 +485,14 @@ final class RecipeFlowUITests: XCTestCase {
 
     @MainActor
     func testTappingAnotherCardSavesTheOneBeingEdited() throws {
-        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
-        XCTAssertTrue(app.staticTexts["No steps found"].waitForExistence(timeout: 5))
-        app.staticTexts["No steps found"].tap()
-        let steps = cardEditor(app, "steps")
-        XCTAssertTrue(steps.waitForExistence(timeout: 5))
-        steps.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        let app = launchApp(photoText: [
+            "ingredients": "2 cups flour\n1 cup water\n3 eggs",
+            "steps": "1. Mix the flour and water.\n2. Bake for 20 minutes.",
+        ])
+        openNewRecipe(app)
+        fill(app, "Ingredients")
+        addSection(app, "Steps")
+        XCTAssertTrue(cardEditor(app, "steps").exists)
 
         // No closing the keyboard: tap the ingredients card straight away.
         app.staticTexts["2 cups flour"].tap()
@@ -462,28 +502,15 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testNotesAreTypedInPlaceAndSitBetweenStepsAndSourceLink() throws {
-        let app = launchWithRecipe(
-            ingredients: "2 cups flour\n1 cup water",
-            steps: "1. Mix the flour and water.\n2. Bake for 20 minutes."
-        )
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+    func testNotesFromAPhotoAreEditedInPlace() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough overnight."])
+        openNewRecipe(app)
+        fill(app, "Notes")
 
-        let steps = app.staticTexts["Steps"], notes = app.staticTexts["Notes"], link = app.staticTexts["Source link"]
-        XCTAssertTrue(steps.frame.minY < notes.frame.minY && notes.frame.minY < link.frame.minY, "Notes is between Steps and Source link")
-        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
-        app.staticTexts["No notes yet"].tap()
-
-        let editor = cardEditor(app, "notes")
-        XCTAssertTrue(editor.waitForExistence(timeout: 5))
-        editor.typeText("Rest the dough overnight.")
-        tapDone(app)
-
-        // The note is kept as written, and the photo icon stays.
+        // The note is kept as written.
         let card = app.staticTexts["noteText"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         XCTAssertEqual(card.label, "Rest the dough overnight.")
-        XCTAssertTrue(app.buttons["addNotesPhotoButton"].exists)
 
         // Tap the note to edit it, and add a line.
         card.tap()
@@ -599,11 +626,11 @@ final class RecipeFlowUITests: XCTestCase {
         )
         snap(app, "12-no-source-link")
 
-        // No link yet, so the + is shown and not the pencil.
-        let add = app.buttons["addSourceLinkButton"]
-        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        // No link yet, so no Source link section and no pencil; it is added from the plus.
+        XCTAssertFalse(app.staticTexts["Source link"].exists)
         XCTAssertFalse(app.buttons["editSourceLinkButton"].exists)
-        add.tap()
+        app.buttons["addSectionButton"].tap()
+        app.buttons["Source link"].tap()
 
         // The Simulator has no camera, so only pasting is offered.
         let field = app.textFields["sourceLinkField"]
@@ -622,11 +649,11 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "13-add-source-link")
         save.tap()
 
-        // Saved: the link is shown, and the pencil replaces the +.
+        // Saved: the section shows the link and a pencil.
         let link = app.descendants(matching: .any)["sourceLink"]
         XCTAssertTrue(link.waitForExistence(timeout: 5))
         XCTAssertTrue(link.label.contains("youtube.com/watch?v=abc"))
-        XCTAssertFalse(app.buttons["addSourceLinkButton"].exists)
+        XCTAssertTrue(app.staticTexts["Source link"].exists)
         snap(app, "14-source-link-saved")
 
         // Edit shows the saved link, and Remove takes it away again.
@@ -635,7 +662,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(editField.waitForExistence(timeout: 5))
         XCTAssertTrue((editField.value as? String ?? "").contains("youtube.com/watch?v=abc"))
         app.buttons["removeSourceLinkButton"].tap()
-        XCTAssertTrue(app.buttons["addSourceLinkButton"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Source link"].waitForNonExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["sourceLink"].exists)
     }
 

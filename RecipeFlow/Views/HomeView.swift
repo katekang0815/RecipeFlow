@@ -35,13 +35,8 @@ struct HomeView: View {
 
                         if searching { searchField }
 
-                        if recipes.isEmpty {
-                            // Nothing yet: just the plus, in the middle of the page.
-                            addCard
-                                .frame(width: side, height: side)
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, max(0, geometry.size.height / 2 - side - 80))
-                        } else {
+                        // With no recipes the plus card is centered on the page instead, see below.
+                        if !recipes.isEmpty {
                             LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
                                 ForEach(shownRecipes) { recipe in
                                     card(for: recipe).frame(height: side)
@@ -52,6 +47,14 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, margin)
                     .padding(.top, 16)
+                }
+                .overlay {
+                    if recipes.isEmpty {
+                        // In the middle of the screen, the same size as a card in the grid.
+                        addCard
+                            .frame(width: side, height: side)
+                            .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                    }
                 }
             }
             .background(Theme.background.ignoresSafeArea())

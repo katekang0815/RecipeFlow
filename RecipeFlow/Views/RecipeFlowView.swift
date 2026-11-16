@@ -6,10 +6,9 @@
 import SwiftUI
 import SwiftData
 
-/// A recipe. A new recipe opens here empty: the title and the Ingredients, Steps and Notes cards are
-/// filled in place, by tapping one and typing, with no edit icon. Each card also has a plus after its heading for
-/// adding by photo, empty or not, so every section can come from its own photo. The source link has
-/// its own add and edit buttons.
+/// A recipe. A new recipe opens here with just a title and one plus button. The plus drops down
+/// Ingredients, Steps, Notes and Source link; each is added from its own photo and then shows in its
+/// place, above the plus. A card is edited in place by tapping it, with no edit icon.
 struct RecipeFlowView: View {
     var recipe: Recipe
 
@@ -50,21 +49,42 @@ struct RecipeFlowView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     titleField
 
-                    editableSection(.ingredients, "Ingredients") {
-                        ingredients(recipe.sortedIngredients)
+                    // Only the sections that have something show, always in this order.
+                    if shows(.ingredients) {
+                        editableSection(.ingredients, "Ingredients") {
+                            ingredients(recipe.sortedIngredients)
+                        }
                     }
-                    editableSection(.steps, "Steps") {
-                        steps(recipe.sortedSteps)
+                    if shows(.steps) {
+                        editableSection(.steps, "Steps") {
+                            steps(recipe.sortedSteps)
+                        }
                     }
-                    editableSection(.notes, "Notes") {
-                        notes(recipe.note)
+                    if shows(.notes) {
+                        editableSection(.notes, "Notes") {
+                            notes(recipe.note)
+                        }
+                    }
+                    if hasSourceLink {
+                        plainSection("Source link") { sourceLink }
                     }
 
-                    plainSection("Source link") { sourceLink }
+                    // The one add button stays below the last section.
+                    addSectionMenu
+                    if let photoProblem {
+                        Text(photoProblem.text)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.ink.opacity(0.7))
+                    }
                 }
+                // At least a page tall, so the empty part of a short page can be tapped to close the keyboard.
+                .frame(minHeight: UIScreen.main.bounds.height * 0.5, alignment: .top)
+                .background(Color.clear.contentShape(Rectangle()).onTapGesture { focus = nil })
                 .padding(16)
             }
             .scrollDismissesKeyboard(.interactively)
+            // A short page still drags, so dragging down closes the keyboard.
+            .scrollBounceBehavior(.always, axes: .vertical)
             .onChange(of: draft) {
                 // Keep the bottom of the card being typed in, and its status line, above the keyboard.
                 if let editing { proxy.scrollTo(editorID(editing), anchor: .bottom) }
@@ -92,7 +112,9 @@ struct RecipeFlowView: View {
             saveTitle()
             finishEditing(discardInvalid: true)
         }
-        .photoTextSource(isChoosing: $choosingPhoto, onOutcome: handlePhoto)
+        .photoTextSource(isChoosing: $choosingPhoto) { outcome in
+            handlePhoto(fakeText(for: photoTarget) ?? outcome)
+        }
         .sheet(isPresented: $showLinkEditor) {
             SourceLinkEditor(
                 current: recipe.sourceURL,
@@ -164,11 +186,7 @@ struct RecipeFlowView: View {
         @ViewBuilder display: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 0) {
-                heading(title)
-                photoButton(for: section)
-                Spacer()
-            }
+            heading(title)
 
             if editing == section {
                 editor(for: section)
@@ -177,31 +195,52 @@ struct RecipeFlowView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { beginEditing(section) }
             }
-
-            if let photoProblem, photoProblem.section == section {
-                Text(photoProblem.text)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink.opacity(0.7))
-            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(title.lowercased() + "Section")
     }
 
-    private func photoButton(for section: RecipeSection) -> some View {
-        Button {
-            photoTarget = section
-            choosingPhoto = true
-        } label: {
-            // A bare plus in the ink color, right after the heading: no circle behind it.
-            Image(systemName: "plus")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Theme.ink)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+    private func shows(_ section: RecipeSection) -> Bool {
+        if editing == section { return true }
+        switch section {
+        case .ingredients: return !recipe.ingredients.isEmpty
+        case .steps: return !recipe.steps.isEmpty
+        case .notes: return !recipe.note.isEmpty
         }
-        .accessibilityLabel("Add \(section.noun) from a photo")
-        .accessibilityIdentifier("add\(section.noun.capitalized)PhotoButton")
+    }
+
+    private var hasSourceLink: Bool {
+        recipe.sourceURL.flatMap(SourceLink.url(from:)) != nil
+    }
+
+    /// The only add button: a plus that drops down the four sections. Choosing one asks for a photo
+    /// (or, for the source link, opens its editor); the section then appears in its place above the plus.
+    private var addSectionMenu: some View {
+        Menu {
+            ForEach([RecipeSection.ingredients, .steps, .notes], id: \.self) { section in
+                Button(section.noun.capitalized) {
+                    photoTarget = section
+                    choosingPhoto = true
+                }
+            }
+            Button("Source link") { showLinkEditor = true }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(Theme.ink)
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+        }
+        .accessibilityLabel("Add a section")
+        .accessibilityIdentifier("addSectionButton")
+    }
+
+    /// For UI tests: the text a photo of this section "contains", from the launch arguments.
+    private func fakeText(for section: RecipeSection?) -> PhotoText.Outcome? {
+        guard let section,
+              let text = UserDefaults.standard.string(forKey: "fakePhotoText.\(section.noun)") else { return nil }
+        // Launch arguments cannot carry line breaks, so a test writes them as ⏎.
+        return .text(text.replacingOccurrences(of: "⏎", with: "\n"))
     }
 
     /// The card while it is being edited: its text as a field, and what saving it would do.
@@ -222,6 +261,9 @@ struct RecipeFlowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+            // The padding around the text takes the cursor too, instead of counting as empty page.
+            .contentShape(Rectangle())
+            .onTapGesture { focus = .section(section) }
             .accessibilityIdentifier("\(section.noun)Editor")
 
             if let status = SectionText.status(section, text: draft, parsed: parsed) {
@@ -235,16 +277,6 @@ struct RecipeFlowView: View {
     }
 
     private func editorID(_ section: RecipeSection) -> String { "editor-\(section.rawValue)" }
-
-    private func placeholder(_ text: String, hint: String) -> some View {
-        VStack(spacing: 6) {
-            Text(text)
-            Text(hint).font(.footnote)
-        }
-        .foregroundStyle(Theme.ink.opacity(0.45))
-        .frame(maxWidth: .infinity, minHeight: 140)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-    }
 
     // MARK: Editing in place
 
@@ -336,27 +368,23 @@ struct RecipeFlowView: View {
 
     @ViewBuilder
     private func ingredients(_ items: [Ingredient]) -> some View {
-        if items.isEmpty {
-            placeholder("No ingredients found", hint: "Tap to type, or tap the photo icon")
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                ForEach(Array(grouped(items).enumerated()), id: \.offset) { _, block in
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let group = block.group {
-                            Text(group)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Theme.ink)
-                        }
-                        ForEach(block.items) { item in
-                            ingredientRow(item)
-                        }
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(grouped(items).enumerated()), id: \.offset) { _, block in
+                VStack(alignment: .leading, spacing: 8) {
+                    if let group = block.group {
+                        Text(group)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                    }
+                    ForEach(block.items) { item in
+                        ingredientRow(item)
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
     }
 
     /// "40 g bread flour", or "salt, to taste" when the amount has no number.
@@ -383,62 +411,52 @@ struct RecipeFlowView: View {
 
     @ViewBuilder
     private func steps(_ items: [Step]) -> some View {
-        if items.isEmpty {
-            placeholder("No steps found", hint: "Tap to type, or tap the photo icon")
-        } else {
-            // One card for every step, like the ingredients card above it.
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, step in
-                    HStack(alignment: .top, spacing: 12) {
-                        Text("\(index + 1)")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 30, height: 30)
-                            .background(Circle().fill(Theme.ink))
+        // One card for every step, like the ingredients card above it.
+        VStack(alignment: .leading, spacing: 18) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .top, spacing: 12) {
+                    Text("\(index + 1)")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(Theme.ink))
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(step.title)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Theme.ink)
-                            if !step.detail.isEmpty {
-                                Text(step.detail)
-                                    .foregroundStyle(Theme.ink.opacity(0.8))
-                            }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(step.title)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.ink)
+                        if !step.detail.isEmpty {
+                            Text(step.detail)
+                                .foregroundStyle(Theme.ink.opacity(0.8))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
     }
 
     // MARK: Notes
 
     @ViewBuilder
     private func notes(_ text: String) -> some View {
-        if text.isEmpty {
-            placeholder("No notes yet", hint: "Tap to type, or tap the photo icon")
-        } else {
-            Text(text)
-                .foregroundStyle(Theme.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-                .accessibilityIdentifier("noteText")
-        }
+        Text(text)
+            .foregroundStyle(Theme.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
+            .accessibilityIdentifier("noteText")
     }
 
     // MARK: Source link
 
-    /// One line like the ingredient card: the link on the left, + (add) or the pencil (edit) on the right.
+    /// One line like the ingredient card: the link on the left and a pencil to change or remove it.
     private var sourceLink: some View {
-        let saved = recipe.sourceURL.flatMap(SourceLink.url(from:))
-
-        return HStack(spacing: 12) {
-            if let saved {
+        HStack(spacing: 12) {
+            if let saved = recipe.sourceURL.flatMap(SourceLink.url(from:)) {
                 Link(destination: saved) {
                     Text(saved.absoluteString)
                         .lineLimit(1)
@@ -448,21 +466,17 @@ struct RecipeFlowView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityIdentifier("sourceLink")
-            } else {
-                Text("Add a source link")
-                    .foregroundStyle(Theme.ink.opacity(0.45))
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Button { showLinkEditor = true } label: {
-                Image(systemName: saved == nil ? "plus" : "pencil")
+                Image(systemName: "pencil")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(Theme.ink))
             }
-            .accessibilityLabel(saved == nil ? "Add source link" : "Edit source link")
-            .accessibilityIdentifier(saved == nil ? "addSourceLinkButton" : "editSourceLinkButton")
+            .accessibilityLabel("Edit source link")
+            .accessibilityIdentifier("editSourceLinkButton")
         }
         .padding(.vertical, 10)
         .padding(.leading, 16)
