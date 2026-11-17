@@ -45,6 +45,13 @@ enum SectionText {
         return "\(found) step\(found == 1 ? "" : "s") found."
     }
 
+    /// Steps from a photo added after the steps already in a card. They are numbered on from the last
+    /// step, whatever numbers they came with, so adding the same 1, 2, 3 again makes 4, 5, 6.
+    static func appendingSteps(_ addition: String, to text: String) -> String {
+        let existing = StepParser.parse(text).count
+        return appending(StepParser.renumbered(addition, from: existing + 1), to: text)
+    }
+
     /// `addition` placed after the text already in a card, on a new line. A photo of more steps or
     /// ingredients is added this way, so what was there is kept.
     static func appending(_ addition: String, to text: String) -> String {

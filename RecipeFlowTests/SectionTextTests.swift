@@ -44,4 +44,37 @@ struct SectionTextTests {
         let text = SectionText.appending("1. Cool.\n2. Slice.", to: "1. Mix.\n2. Bake.")
         #expect(StepParser.parse(text).map(\.title) == ["Mix", "Bake", "Cool", "Slice"])
     }
+
+    // MARK: Numbering on from the steps already there
+
+    @Test func newStepsContinueTheNumbersWhateverTheyStartAt() {
+        #expect(SectionText.appendingSteps("1. Cool.\n2. Slice.", to: "1. Mix.\n2. Bake.\n3. Rest.")
+                == "1. Mix.\n2. Bake.\n3. Rest.\n4. Cool.\n5. Slice.")
+        #expect(SectionText.appendingSteps("7. Cool.\n9. Slice.", to: "1. Mix.\n2. Bake.")
+                == "1. Mix.\n2. Bake.\n3. Cool.\n4. Slice.")
+    }
+
+    @Test func theSameStepsAddedAgainAreKeptWithNewNumbers() {
+        let steps = "1. Mix.\n2. Bake.\n3. Cool."
+        let text = SectionText.appendingSteps(steps, to: steps)
+        #expect(text == "1. Mix.\n2. Bake.\n3. Cool.\n4. Mix.\n5. Bake.\n6. Cool.")
+        #expect(StepParser.parse(text).count == 6)
+    }
+
+    @Test func newStepsKeepTheirOtherLinesAndAnyNumberStyle() {
+        let text = SectionText.appendingSteps("② Heat the cream. Gently.\n(My mixer: level 9)\n③ Seal.", to: "1. Mix.")
+        #expect(text == "1. Mix.\n2. Heat the cream. Gently.\n(My mixer: level 9)\n3. Seal.")
+    }
+
+    @Test func stepsWhoseCirclesWereReadAsSymbolsAreNumberedToo() {
+        #expect(SectionText.appendingSteps("® Lower.\n® Raise.", to: "1. Mix.\n2. Bake.") == "1. Mix.\n2. Bake.\n3. Lower.\n4. Raise.")
+    }
+
+    @Test func stepsAddedToAnEmptyCardStartAtOne() {
+        #expect(SectionText.appendingSteps("4. Mix.\n5. Bake.", to: "") == "1. Mix.\n2. Bake.")
+    }
+
+    @Test func textWithNoStepsIsAddedAsItIs() {
+        #expect(SectionText.appendingSteps("Mix it", to: "1. Mix.") == "1. Mix.\nMix it")
+    }
 }

@@ -71,7 +71,8 @@ enum TextRecognizer {
     private static func isMarker(_ text: String) -> Bool {
         guard text.count <= 4 else { return false }
         if text.wholeMatch(of: /\(?(\d{1,3}|[IVXivx]{1,4}|[A-Za-z])[.)]?/) != nil { return true }
-        return text.count == 1 && text.first.flatMap(StepParser.circledValue) != nil
+        guard text.count == 1, let first = text.first else { return false }
+        return StepParser.circledValue(first) != nil || StepParser.isCircleMark(first)
     }
 
     /// The lines of text. A step number in a circle is a block of its own, and the reader tends to list

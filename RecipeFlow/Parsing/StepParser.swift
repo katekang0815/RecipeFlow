@@ -16,11 +16,29 @@ struct ParsedStep: Equatable {
 ///
 /// A step starts at a line that begins with a number, in any of these styles:
 /// 1  1.  1)  (1)  ①  ⒈  ❶  ➊  ⓫  ㉑  ㊱  I  II  III  a  b  c (with a . or ) after a letter).
+/// A circle that was read as ® © or @ also starts a step; its number is lost, but the order is not.
 /// A number may also sit alone on its line, as a number in a circle does when a photo is read:
 /// the next line is then the step. Lines after a numbered line belong to its step.
 /// Nothing else is looked for: no headers, bullets, ingredients or notes.
 enum StepParser {
     static func parse(_ text: String) -> [ParsedStep] {
+        stepLines(in: text).map(makeStep)
+    }
+
+    /// The text with its steps numbered one after another from `first`, whatever numbers it had.
+    /// Each step's lines are kept as written; only the number in front of the step is replaced.
+    /// Text with no steps in it is returned as it is.
+    static func renumbered(_ text: String, from first: Int) -> String {
+        let steps = stepLines(in: text)
+        guard !steps.isEmpty else { return text }
+        return steps.enumerated().map { index, lines in
+            (["\(first + index). \(lines[0])"] + lines.dropFirst()).joined(separator: "\n")
+        }
+        .joined(separator: "\n")
+    }
+
+    /// Each step as its lines, the number taken off the first.
+    private static func stepLines(in text: String) -> [[String]] {
         var steps: [[String]] = []
         var previous = 0  // the last number seen, for numbers that have no punctuation
         var numberAlone = false  // the last line was just a number, so the next line is its step
@@ -41,7 +59,7 @@ enum StepParser {
                 steps[steps.count - 1].append(line)
             }
         }
-        return steps.map(makeStep)
+        return steps
     }
 
     // MARK: Lines
@@ -84,6 +102,10 @@ enum StepParser {
         if let first = line.first, let number = circledValue(first) {
             return Marker(number: number, rest: String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
         }
+        // A circle the text reader could not read as a number: it comes out as ® © @, or a circled letter
+        if let first = line.first, isCircleMark(first) {
+            return Marker(number: nil, rest: String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
+        }
         // (1) (a) (iv)
         if let match = line.wholeMatch(of: /\((\d{1,2}|[A-Za-z]|[IVXivx]{1,4})\)\s*(.*)/) {
             return Marker(number: Int(match.1), rest: String(match.2))
@@ -108,6 +130,14 @@ enum StepParser {
             return Marker(number: nil, rest: "")
         }
         return nil
+    }
+
+    /// What the text reader makes of a circled number it cannot read (a circled 17 often comes out as ®),
+    /// and circled letters: Ⓐ ⓑ ⒜. The number is lost, so these only mark where a step starts.
+    static func isCircleMark(_ character: Character) -> Bool {
+        if "®©@".contains(character) { return true }
+        guard character.unicodeScalars.count == 1, let value = character.unicodeScalars.first?.value else { return false }
+        return (0x24B6...0x24E9).contains(value) || (0x249C...0x24B5).contains(value)
     }
 
     /// The number in a circled, parenthesized or dingbat digit: ① ⑵ ⒈ ❶ ➊ ⓫ ㉑ ㊱

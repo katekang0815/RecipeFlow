@@ -113,4 +113,31 @@ struct StepParserTests {
     @Test func numbersNeedNotStartAtOneOrGoInOrder() {
         #expect(titles("3. Mix.\n1. Bake.\n2. Cool.") == ["Mix", "Bake", "Cool"])
     }
+
+    @Test func aCircleReadAsAnotherSymbolStillStartsAStep() {
+        // A circled 16 to 19, as the text reader returned it from a photo.
+        let text = """
+        ® Lower to low speed.
+        ® The meringue becomes glossy and dense.
+        (My hand mixer: level 9 - 2 min → level 5 - 2 min → level 3 - 2 min.)
+        ® When lifted, the meringue stands firmly but remains slightly soft.
+        ® Add part of the meringue to the batter from step ®.
+        """
+        let steps = StepParser.parse(text)
+        #expect(steps.map(\.title) == [
+            "Lower to low speed", "The meringue becomes glossy and dense",
+            "When lifted, the meringue stands firmly but remains slightly soft",
+            "Add part of the meringue to the batter from step ®",
+        ])
+        #expect(steps[1].detail.contains("My hand mixer"))
+    }
+
+    @Test func otherCircleMarksAndCircledLetters() {
+        #expect(titles("© Mix.\n@ Bake.") == ["Mix", "Bake"])
+        #expect(titles("Ⓐ Mix.\nⓑ Bake.\n⒞ Cool.") == ["Mix", "Bake", "Cool"])
+    }
+
+    @Test func aSymbolInTheMiddleOfALineIsNotAStep() {
+        #expect(titles("1. Mix with a whisk®.\nthe big one @ the front.") == ["Mix with a whisk®"])
+    }
 }

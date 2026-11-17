@@ -351,6 +351,23 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Steps"].exists, "cancelling adds no section")
     }
 
+    @MainActor
+    func testStepsAddedAgainContinueTheNumbers() throws {
+        let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it.\n3. Cool it."])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        // The same photo again: the same three steps, numbered 4, 5 and 6.
+        fill(app, "Steps")
+
+        for number in ["1", "2", "3", "4", "5", "6"] {
+            XCTAssertTrue(app.staticTexts[number].exists, "step \(number)")
+        }
+        XCTAssertFalse(app.staticTexts["7"].exists)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "stepTitle").count, 0)
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.buttons["recipeRow"].firstMatch.label.contains("0 ingredients · 6 steps"))
+    }
+
     // MARK: Filling and editing the cards in place
 
     @MainActor

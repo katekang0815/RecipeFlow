@@ -343,7 +343,7 @@ struct RecipeFlowView: View {
             } else {
                 requestFocus(target)
             }
-            draft = SectionText.appending(text, to: draft)
+            draft = target == .steps ? SectionText.appendingSteps(text, to: draft) : SectionText.appending(text, to: draft)
         case .problem(let message):
             photoProblem = (target, message)
         }
@@ -379,12 +379,12 @@ struct RecipeFlowView: View {
                         .background(Circle().fill(Theme.ink))
 
                     VStack(alignment: .leading, spacing: 4) {
+                        // The same plain text for the whole step: its first sentence, then what follows.
                         Text(step.title)
-                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.ink)
                         if !step.detail.isEmpty {
                             Text(step.detail)
-                                .foregroundStyle(Theme.ink.opacity(0.8))
+                                .foregroundStyle(Theme.ink)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
