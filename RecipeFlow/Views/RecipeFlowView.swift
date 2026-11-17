@@ -37,6 +37,8 @@ struct RecipeFlowView: View {
     @State private var photoProblem: (section: RecipeSection, text: String)?
 
     @State private var showLinkEditor = false
+    /// A photo of steps with no numbered step in it.
+    @State private var showOnlyNumbered = false
 
     init(recipe: Recipe) {
         self.recipe = recipe
@@ -114,6 +116,11 @@ struct RecipeFlowView: View {
         }
         .photoTextSource(isChoosing: $choosingPhoto) { outcome in
             handlePhoto(fakeText(for: photoTarget) ?? outcome)
+        }
+        .alert(SectionText.onlyNumberedSteps, isPresented: $showOnlyNumbered) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Start each step with a number, like 1. 2. 3.")
         }
         .sheet(isPresented: $showLinkEditor) {
             SourceLinkEditor(
@@ -338,6 +345,11 @@ struct RecipeFlowView: View {
         guard let target = photoTarget else { return }
         switch outcome {
         case .text(let text):
+            // Steps are only numbered ones: a photo with none is not added.
+            if target == .steps, StepParser.parse(text).isEmpty {
+                showOnlyNumbered = true
+                return
+            }
             if editing != target {
                 beginEditing(target)
             } else {
@@ -379,7 +391,7 @@ struct RecipeFlowView: View {
                         .background(Circle().fill(Theme.ink))
 
                     VStack(alignment: .leading, spacing: 4) {
-                        // The same plain text for the whole step: its first sentence, then what follows.
+                        // A step is one paragraph. Steps saved by an older version also have a detail line.
                         Text(step.title)
                             .foregroundStyle(Theme.ink)
                         if !step.detail.isEmpty {

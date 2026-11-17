@@ -32,8 +32,7 @@ enum TextRecognizer {
     /// Returns the recognized lines joined with newlines, in reading order.
     /// Returns an empty string when the image contains no text.
     static func recognize(in image: UIImage) async throws -> String {
-        guard let cgImage = image.cgImage else { throw Failure.unreadableImage }
-        let orientation = CGImagePropertyOrientation(image.imageOrientation)
+        guard let (cgImage, orientation) = readable(image) else { throw Failure.unreadableImage }
 
         return try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
@@ -45,7 +44,7 @@ enum TextRecognizer {
                 let pieces = observations.compactMap { observation in
                     observation.topCandidates(1).first.map { (text: $0.string, box: observation.boundingBox) }
                 }
-                continuation.resume(returning: arrange(pieces).joined(separator: "\n"))
+                continuation.resume(returning: correctedEndings(arrange(pieces)).joined(separator: "\n"))
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
@@ -63,6 +62,49 @@ enum TextRecognizer {
                 }
             }
         }
+    }
+
+    // MARK: Small images
+
+    /// Text in a small image is easily misread, so a small image is enlarged first, up to three times.
+    /// The photo's orientation is applied while drawing, so the result is upright.
+    private static func readable(_ image: UIImage) -> (CGImage, CGImagePropertyOrientation)? {
+        guard let cgImage = image.cgImage else { return nil }
+        let longest = CGFloat(max(cgImage.width, cgImage.height))
+        let target: CGFloat = 2000
+        guard longest < target else { return (cgImage, CGImagePropertyOrientation(image.imageOrientation)) }
+
+        let factor = min(3, target / longest)
+        let size = CGSize(width: image.size.width * factor, height: image.size.height * factor)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let enlarged = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            context.cgContext.interpolationQuality = .high
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return enlarged.cgImage.map { ($0, .up) }
+    }
+
+    // MARK: A misread Korean ending
+
+    /// The text reader sometimes reads the Korean "요." at the end of a line as a digit, "8." or "2.", which
+    /// then looks like a step number. A line that begins with a digit and a full stop and then an opening bracket,
+    /// right after a line of Korean, is that "요." and is put back.
+    static func correctedEndings(_ lines: [String]) -> [String] {
+        var result: [String] = []
+        for line in lines {
+            if let previous = result.last, previous.last.map(isHangul) == true,
+               let match = line.wholeMatch(of: /[0-9]{1,2}\.\s*([(（\[［].*)/) {
+                result.append("요. " + match.1)
+            } else {
+                result.append(line)
+            }
+        }
+        return result
+    }
+
+    private static func isHangul(_ character: Character) -> Bool {
+        character.unicodeScalars.contains { (0xAC00...0xD7A3).contains($0.value) || (0x1100...0x11FF).contains($0.value) }
     }
 
     // MARK: Numbers beside their text

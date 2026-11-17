@@ -42,11 +42,11 @@ extension Recipe {
 
     // MARK: Steps
 
-    /// Numbered steps: "1. Title. Rest of the first line", then the lines that follow.
+    /// Numbered steps, one line each. A step saved by an older version has its detail after the title.
     var stepsText: String {
         sortedSteps.enumerated().map { index, step in
             let head = "\(index + 1). \(step.title)"
-            return step.detail.isEmpty ? head : head + ". " + step.detail
+            return step.detail.isEmpty ? head : head + " " + step.detail.replacingOccurrences(of: "\n", with: " ")
         }
         .joined(separator: "\n")
     }
@@ -58,7 +58,7 @@ extension Recipe {
         for step in old { context.delete(step) }
 
         for step in parsed {
-            insertStep(Step(title: step.title, detail: step.detail), at: steps.count)
+            insertStep(Step(title: step.title), at: steps.count)
         }
     }
 }

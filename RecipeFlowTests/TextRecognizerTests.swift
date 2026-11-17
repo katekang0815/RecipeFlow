@@ -108,3 +108,18 @@ struct NumbersBesideTextTests {
         #expect(TextRecognizer.arrange(pieces) == ["1. First.", "2. Second."])
     }
 }
+
+/// "요." at the end of a Korean line, read as a digit.
+struct MisreadEndingTests {
+    @Test func aDigitAndBracketAfterKoreanIsPutBackAsTheEnding() {
+        let lines = ["유자청 (선택)을 넣어 향을 더하세", "8. (5 minutes • 05:00 )", "4 가루에 기름 비비기: 섞습니다."]
+        #expect(TextRecognizer.correctedEndings(lines) == ["유자청 (선택)을 넣어 향을 더하세", "요. (5 minutes • 05:00 )", "4 가루에 기름 비비기: 섞습니다."])
+        #expect(TextRecognizer.correctedEndings(["향을 더하세", "2. （5 minutes ▶ 05:00）"]) == ["향을 더하세", "요. （5 minutes ▶ 05:00）"])
+    }
+
+    @Test func aRealNumberedStepIsLeftAlone() {
+        // No bracket right after the number, or no Korean line above it.
+        #expect(TextRecognizer.correctedEndings(["향을 더하세", "8. 가루에 기름 비비기"]) == ["향을 더하세", "8. 가루에 기름 비비기"])
+        #expect(TextRecognizer.correctedEndings(["Mix well.", "8. (optional) Add salt."]) == ["Mix well.", "8. (optional) Add salt."])
+    }
+}

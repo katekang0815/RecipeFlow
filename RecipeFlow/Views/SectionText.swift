@@ -35,7 +35,8 @@ enum SectionText {
             .filter { !$0.isEmpty }
     }
 
-    static let noStepsMessage = "No numbered steps found. Start each step with a number, like 1. 2. 3."
+    static let onlyNumberedSteps = "Only numbered steps are valid"
+    static let noStepsMessage = onlyNumberedSteps + ". Start each step with a number, like 1. 2. 3."
 
     /// A line for under the field while typing steps: what was found, or why nothing will be saved.
     static func stepsStatus(_ text: String) -> String? {

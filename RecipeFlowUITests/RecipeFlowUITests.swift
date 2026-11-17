@@ -256,8 +256,8 @@ final class RecipeFlowUITests: XCTestCase {
         for line in ["Tangzhong:", "40g bread flour", "200g water", "580g bread flour", "salt to taste", "egg wash (1 egg yolk + milk)"] {
             XCTAssertTrue(app.staticTexts[line].exists, line)
         }
-        XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
-        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+        XCTAssertTrue(app.staticTexts["Mix flour with water. Stir until thick."].exists)
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours."].exists)
         XCTAssertEqual(app.staticTexts["noteText"].label, "Rest the dough overnight.")
         snap(app, "3-filled-recipe")
 
@@ -270,7 +270,7 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "4-home-list")
         row.tap()
         XCTAssertTrue(app.staticTexts["40g bread flour"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
+        XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours."].exists)
     }
 
     @MainActor
@@ -281,13 +281,9 @@ final class RecipeFlowUITests: XCTestCase {
             notes: "Serve with bread."
         )
 
-        // Only the two numbered lines are steps; the lines under them stay with them, as written.
-        XCTAssertTrue(app.staticTexts["Roast the Garlic"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Brown the Meat"].exists)
-        XCTAssertFalse(app.staticTexts["Preheat: Set your oven to 375F."].exists, "a bullet is not a step of its own")
-        let detail = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Preheat")).firstMatch
-        XCTAssertTrue(detail.exists)
-        XCTAssertTrue(detail.label.contains("- Prep: Slice the tips off the bulbs."))
+        // Only the two numbered lines are steps; the lines under them stay in the same paragraph, as written.
+        XCTAssertTrue(app.staticTexts["Roast the Garlic - Preheat: Set your oven to 375F. - Prep: Slice the tips off the bulbs."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Brown the Meat - Sear: Add the beef."].exists)
         XCTAssertEqual(app.staticTexts["noteText"].label, "Serve with bread.")
         snap(app, "5-bulleted-steps")
     }
@@ -321,15 +317,15 @@ final class RecipeFlowUITests: XCTestCase {
         // Steps first: it appears, and the plus moves below it.
         let plusBefore = plus.frame.minY
         fill(app, "Steps")
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5))
         XCTAssertTrue(plus.frame.minY > plusBefore)
-        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes"].frame.maxY)
+        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes."].frame.maxY)
 
         // Ingredients next: it goes above Steps, and the plus is still at the bottom.
         fill(app, "Ingredients")
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Ingredients"].frame.minY < app.staticTexts["Steps"].frame.minY)
-        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes"].frame.maxY)
+        XCTAssertTrue(plus.frame.minY > app.staticTexts["Bake for 20 minutes."].frame.maxY)
 
         fill(app, "Notes")
         XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
@@ -352,15 +348,20 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testPhotoStepsWithNoNumbersBecomeOneStepPerSentence() throws {
-        let app = launchApp(photoText: ["steps": "Mix the flour.\nBake it\nuntil golden.\nCool it."])
+    func testPhotoStepsWithNoNumbersAreNotAddedAndAnAlertSaysWhy() throws {
+        let app = launchApp(photoText: ["steps": "Mix the flour.\nBake it until golden.\nCool it."])
         openNewRecipe(app)
-        fill(app, "Steps")
-        for number in ["1", "2", "3"] {
-            XCTAssertTrue(app.staticTexts[number].exists, "step \(number)")
-        }
-        XCTAssertTrue(app.staticTexts["Bake it until golden"].exists)
-        XCTAssertFalse(app.staticTexts["4"].exists)
+        app.buttons["addSectionButton"].tap()
+        app.buttons["Steps"].tap()
+        app.buttons["Choose from library"].tap()
+
+        let alert = app.alerts.firstMatch
+        // The photo is read first, which takes a moment.
+        XCTAssertTrue(alert.waitForExistence(timeout: 20))
+        XCTAssertTrue(alert.staticTexts["Only numbered steps are valid"].exists, alert.debugDescription)
+        alert.buttons["OK"].tap()
+        XCTAssertFalse(app.staticTexts["Steps"].exists, "nothing was added")
+        XCTAssertFalse(cardEditor(app, "steps").exists)
     }
 
     @MainActor
@@ -399,7 +400,7 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText("Mix it")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertTrue(message.label.contains("No numbered steps found"))
+        XCTAssertTrue(message.label.contains("Only numbered steps are valid"))
 
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
         editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
@@ -407,8 +408,8 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "7-typing-steps-in-the-card")
         tapDone(app)
 
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes."].exists)
         XCTAssertTrue(app.buttons["addSectionButton"].exists, "the plus stays, to add more")
         XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
 
@@ -421,8 +422,8 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testTappingTheStepsEditsThemInPlaceAndOnlyTheStepsAreSaved() throws {
         let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        app.staticTexts["Mix the flour and water"].tap()
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5))
+        app.staticTexts["Mix the flour and water."].tap()
 
         let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
@@ -439,9 +440,9 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "8-editing-steps-in-place")
         tapDone(app)
 
-        XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].exists)
-        XCTAssertTrue(app.staticTexts["On a wire rack."].exists, "the line under a step stays with it")
+        XCTAssertTrue(app.staticTexts["Cool on a rack. On a wire rack."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].exists)
+        // The line under a step is part of its paragraph.
         XCTAssertFalse(app.staticTexts["Ingredients"].exists, "only the steps were saved")
     }
 
@@ -461,7 +462,7 @@ final class RecipeFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["salt"].exists)
-        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists, "the steps are untouched")
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes."].exists, "the steps are untouched")
     }
 
     @MainActor
@@ -490,21 +491,21 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testTextWithNothingValidIsNotSaved() throws {
         let app = launchWithRecipe(steps: "1. Mix the flour and water.\n2. Bake for 20 minutes.")
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        app.staticTexts["Mix the flour and water"].tap()
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5))
+        app.staticTexts["Mix the flour and water."].tap()
 
         let editor = cardEditor(app, "steps")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         waitForKeyboard(app)
         tapEnd(of: editor)
-        // "1. Mix the flour and water" + "2. Bake for 20 minutes" and a line break: 48 characters.
-        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 48))
+        // "1. Mix the flour and water." + "2. Bake for 20 minutes." and a line break: 51 characters.
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 51))
         editor.typeText("Mix it")
         tapDone(app)
 
         // It stays on screen with its message instead of replacing the steps.
         XCTAssertTrue(cardEditor(app, "steps").exists)
-        XCTAssertTrue(app.staticTexts["sectionEditorMessage"].label.contains("No numbered steps found"))
+        XCTAssertTrue(app.staticTexts["sectionEditorMessage"].label.contains("Only numbered steps are valid"))
 
         // Leaving the screen drops it, and the saved steps are as they were.
         app.navigationBars.buttons.firstMatch.tap()
@@ -512,8 +513,8 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("0 ingredients · 2 steps"))
         row.tap()
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Bake for 20 minutes"].exists)
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Bake for 20 minutes."].exists)
     }
 
     @MainActor
@@ -530,7 +531,7 @@ final class RecipeFlowUITests: XCTestCase {
         // No closing the keyboard: tap the ingredients card straight away.
         app.staticTexts["2 cups flour"].tap()
         XCTAssertTrue(cardEditor(app, "ingredients").waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Mix the flour and water"].waitForExistence(timeout: 5), "the steps were saved")
+        XCTAssertTrue(app.staticTexts["Mix the flour and water."].waitForExistence(timeout: 5), "the steps were saved")
         XCTAssertFalse(cardEditor(app, "steps").exists)
     }
 

@@ -24,14 +24,14 @@ struct RecipePersistenceTests {
         #expect(items.map(\.sortIndex) == [0, 1, 2])
     }
 
-    @Test func savesStepsInOrderWithTitleAndDetail() {
+    @Test func savesEachStepAsOneParagraphInOrder() {
         let context = PersistenceController.previewContainer(withSample: false).mainContext
         let recipe = makeRecipe(steps: steps, in: context)
 
         let saved = recipe.sortedSteps
-        #expect(saved.map(\.title) == ["Mix 40g flour with 200g water", "Refrigerate for 6 hours", "Bake for 25 minutes"])
+        #expect(saved.map(\.title) == ["Mix 40g flour with 200g water. Stir until thick.", "Refrigerate for 6 hours.", "Bake for 25 minutes."])
         #expect(saved.map(\.sortIndex) == [0, 1, 2])
-        #expect(saved[0].detail == "Stir until thick.")
+        #expect(saved.allSatisfy { $0.detail.isEmpty })
     }
 
     @Test func aNewRecipeHasNoNoteAndNoLink() {

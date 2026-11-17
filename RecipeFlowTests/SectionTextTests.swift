@@ -25,6 +25,7 @@ struct SectionTextTests {
         #expect(SectionText.stepsStatus("1. Mix.\n2. Bake.") == "2 steps found.")
         #expect(SectionText.stepsStatus("1. Mix.") == "1 step found.")
         #expect(SectionText.stepsStatus("Mix it") == SectionText.noStepsMessage)
+        #expect(SectionText.noStepsMessage.hasPrefix("Only numbered steps are valid"))
         #expect(SectionText.stepsStatus("  \n") == nil)
     }
 
@@ -42,7 +43,7 @@ struct SectionTextTests {
 
     @Test func morePhotosOfStepsAreAllReadAtTheirNumbers() {
         let text = SectionText.appending("1. Cool.\n2. Slice.", to: "1. Mix.\n2. Bake.")
-        #expect(StepParser.parse(text).map(\.title) == ["Mix", "Bake", "Cool", "Slice"])
+        #expect(StepParser.parse(text).map(\.title) == ["Mix.", "Bake.", "Cool.", "Slice."])
     }
 
     // MARK: Numbering on from the steps already there
@@ -61,9 +62,9 @@ struct SectionTextTests {
         #expect(StepParser.parse(text).count == 6)
     }
 
-    @Test func newStepsKeepTheirOtherLinesAndAnyNumberStyle() {
+    @Test func eachNewStepIsOneLineWhateverNumberStyleItHad() {
         let text = SectionText.appendingSteps("② Heat the cream. Gently.\n(My mixer: level 9)\n③ Seal.", to: "1. Mix.")
-        #expect(text == "1. Mix.\n2. Heat the cream. Gently.\n(My mixer: level 9)\n3. Seal.")
+        #expect(text == "1. Mix.\n2. Heat the cream. Gently. (My mixer: level 9)\n3. Seal.")
     }
 
     @Test func stepsWhoseCirclesWereReadAsSymbolsAreNumberedToo() {
@@ -74,31 +75,15 @@ struct SectionTextTests {
         #expect(SectionText.appendingSteps("4. Mix.\n5. Bake.", to: "") == "1. Mix.\n2. Bake.")
     }
 
-    @Test func textWithNoNumberAnywhereBecomesOneStepPerSentence() {
-        // A photo whose numbers were lost: a bullet, nothing, nothing, a star.
-        let photo = "• Grind the tea leaves with a coffee grinder.\nFor the cream, add ground tea.\nSeal and refrigerate for at least 3 hours.\n* Boil the milk with the tea in the same way."
-        #expect(SectionText.appendingSteps(photo, to: "1. Mix.\n2. Bake.\n3. Cool.\n4. Rest.\n5. Serve.")
-                == "1. Mix.\n2. Bake.\n3. Cool.\n4. Rest.\n5. Serve.\n6. Grind the tea leaves with a coffee grinder.\n7. For the cream, add ground tea.\n8. Seal and refrigerate for at least 3 hours.\n9. Boil the milk with the tea in the same way.")
+    @Test func textWithNoNumberIsLeftAsItIs() {
+        // The screen does not add it: only numbered steps are valid.
+        #expect(SectionText.appendingSteps("Mix it.\nBake it.", to: "1. Mix.") == "1. Mix.\nMix it.\nBake it.")
+        #expect(StepParser.parse("Mix it.\nBake it.").isEmpty)
     }
 
-    @Test func aSentenceThatWrapsOntoTheNextLineIsOneStep() {
-        #expect(SectionText.appendingSteps("Cover with plastic wrap and let\nsit for 20 minutes.\nBake.", to: "1. Mix.")
-                == "1. Mix.\n2. Cover with plastic wrap and let sit for 20 minutes.\n3. Bake.")
-    }
-
-    @Test func aLineInBracketsStaysWithTheStepAbove() {
-        let text = SectionText.appendingSteps("The meringue becomes glossy.\n(My mixer: level 9 - 2 min.)\nWhen lifted, it stands.", to: "")
-        #expect(text == "1. The meringue becomes glossy.\n(My mixer: level 9 - 2 min.)\n2. When lifted, it stands.")
-        #expect(StepParser.parse(text).count == 2)
-    }
-
-    @Test func oneLineWithNoNumberIsOneStep() {
-        #expect(SectionText.appendingSteps("Mix it", to: "1. Mix.") == "1. Mix.\n2. Mix it")
-    }
-
-    @Test func textWithAnyNumberIsNotSplitBySentence() {
+    @Test func textWithAnyNumberKeepsItsOtherLinesInTheStep() {
         // One line has a number, so the numbers are used and the lines under it stay with it.
         #expect(SectionText.appendingSteps("1. Grind.\nFor the cream.\nSeal.", to: "")
-                == "1. Grind.\nFor the cream.\nSeal.")
+                == "1. Grind. For the cream. Seal.")
     }
 }

@@ -6,10 +6,8 @@
 import Foundation
 
 struct ParsedStep: Equatable {
-    /// First sentence of the first line.
+    /// The whole step as one paragraph: its lines joined with spaces, symbols and all.
     var title: String
-    /// The rest of the first line, then every following line up to the next number, one per line.
-    var detail: String
 }
 
 /// Splits text that is known to be steps into one step per number.
@@ -18,7 +16,8 @@ struct ParsedStep: Equatable {
 /// 1  1.  1)  (1)  ①  ⒈  ❶  ➊  ⓫  ㉑  ㊱  I  II  III  a  b  c (with a . or ) after a letter).
 /// A circle that was read as ® © or @ also starts a step; its number is lost, but the order is not.
 /// A number may also sit alone on its line, as a number in a circle does when a photo is read:
-/// the next line is then the step. Lines after a numbered line belong to its step.
+/// the next line is then the step. Lines after a numbered line belong to its step, and a step is kept
+/// as one paragraph: its lines joined with spaces, with every symbol the text reader returned.
 /// Nothing else is looked for: no headers, bullets, ingredients or notes.
 enum StepParser {
     static func parse(_ text: String) -> [ParsedStep] {
@@ -26,41 +25,15 @@ enum StepParser {
     }
 
     /// The text with its steps numbered one after another from `first`, whatever numbers it had.
-    /// Each step's lines are kept as written; only the number in front of the step is replaced.
-    /// Text with no number anywhere is split at the end of each sentence instead, see `bySentence`.
+    /// Each step becomes one line: its own lines joined with spaces, with the number in front replaced.
+    /// Text with no numbered step in it is returned as it is.
     static func renumbered(_ text: String, from first: Int) -> String {
         let steps = stepLines(in: text)
-        guard !steps.isEmpty else { return bySentence(text, from: first) }
+        guard !steps.isEmpty else { return text }
         return steps.enumerated().map { index, lines in
-            (["\(first + index). \(lines[0])"] + lines.dropFirst()).joined(separator: "\n")
+            "\(first + index). " + lines.joined(separator: " ")
         }
         .joined(separator: "\n")
-    }
-
-    /// Text that has no number anywhere, as from a photo whose numbers were lost: one step per sentence,
-    /// numbered from `first`. A step runs on to the line that ends a sentence, and a line in brackets
-    /// stays with the step above it. A bullet in front of a step is dropped.
-    static func bySentence(_ text: String, from first: Int) -> String {
-        var steps: [String] = []
-        var open = false  // the last step has not reached the end of its sentence
-        for line in normalizedLines(text) where !line.isEmpty {
-            if let last = steps.indices.last, open {
-                steps[last] += " " + line
-            } else if let last = steps.indices.last, line.hasPrefix("(") || line.hasPrefix("（") {
-                steps[last] += "\n" + line
-            } else {
-                steps.append(line.replacing(/^[•·●○▪◦*\-–—]\s*/, with: ""))
-            }
-            open = !endsSentence(steps[steps.count - 1])
-        }
-        return steps.enumerated().map { "\(first + $0.offset). \($0.element)" }.joined(separator: "\n")
-    }
-
-    /// A full stop, even when a closing bracket or quote follows it; Korean sentences may end in 다 or 요.
-    private static func endsSentence(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: ")）\"”’ "))
-        guard let last = trimmed.last else { return false }
-        return ".!?。！？다요".contains(last)
     }
 
     /// Each step as its lines, the number taken off the first.
@@ -187,18 +160,6 @@ enum StepParser {
     // MARK: A step
 
     private static func makeStep(_ lines: [String]) -> ParsedStep {
-        var step = splitFirstSentence(lines[0])
-        step.detail = ([step.detail] + lines.dropFirst()).filter { !$0.isEmpty }.joined(separator: "\n")
-        return step
-    }
-
-    /// First sentence becomes the title, the rest the detail. A period inside a number ("1.5") is not a break.
-    private static func splitFirstSentence(_ text: String) -> ParsedStep {
-        if let end = text.range(of: #"[.!?。](?=\s|$)"#, options: .regularExpression) {
-            let title = String(text[..<end.lowerBound]).trimmingCharacters(in: .whitespaces)
-            let detail = String(text[end.upperBound...]).trimmingCharacters(in: .whitespaces)
-            if !title.isEmpty { return ParsedStep(title: title, detail: detail) }
-        }
-        return ParsedStep(title: text, detail: "")
+        ParsedStep(title: lines.joined(separator: " "))
     }
 }

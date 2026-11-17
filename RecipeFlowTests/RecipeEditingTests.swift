@@ -89,7 +89,7 @@ struct RecipeEditingTests {
         let recipe = makeRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs", in: c.mainContext)
         recipe.replaceSteps(with: StepParser.parse("1. Mix the flour and water.\n2. Bake for 20 minutes."), in: c.mainContext)
 
-        #expect(recipe.sortedSteps.map(\.title) == ["Mix the flour and water", "Bake for 20 minutes"])
+        #expect(recipe.sortedSteps.map(\.title) == ["Mix the flour and water.", "Bake for 20 minutes."])
         #expect(recipe.sortedSteps.map(\.sortIndex) == [0, 1])
         #expect(recipe.sortedIngredients.map(\.name) == ["2 cups flour", "1 cup water", "3 eggs"])
     }
@@ -113,7 +113,7 @@ struct RecipeEditingTests {
         try context.save()
 
         #expect(recipe.sortedSteps.count == 4)
-        #expect(recipe.sortedSteps.last?.title == "Cool on a rack")
+        #expect(recipe.sortedSteps.last?.title == "Cool on a rack.")
         #expect(recipe.ingredients.count == 1)
         // The replaced records are really gone from the store.
         #expect(try context.fetch(FetchDescriptor<Step>()).count == 4)
