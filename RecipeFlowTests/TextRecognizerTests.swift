@@ -55,3 +55,56 @@ struct TextRecognizerTests {
         #expect(text.isEmpty)
     }
 }
+
+/// A step number in a circle is a block of its own beside its text.
+struct NumbersBesideTextTests {
+    /// A piece of text at a place on the page; y counts from the top, like a page.
+    private func piece(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat = 0.6, height: CGFloat = 0.03) -> (text: String, box: CGRect) {
+        (text, CGRect(x: x, y: 1 - y - height, width: width, height: height))
+    }
+
+    @Test func numbersListedFirstAreMovedBesideTheirText() {
+        // The reader returns the numbers as one column, then the texts.
+        let pieces = [
+            piece("1", x: 0.05, y: 0.10, width: 0.05), piece("2", x: 0.05, y: 0.20, width: 0.05), piece("3", x: 0.05, y: 0.30, width: 0.05),
+            piece("Prep the ribs: Peel the membrane.", x: 0.15, y: 0.10),
+            piece("makes them softer.", x: 0.15, y: 0.14),
+            piece("Parboil: Put the ribs in a pot.", x: 0.15, y: 0.20),
+            piece("Skim and simmer: Once boiling.", x: 0.15, y: 0.30),
+        ]
+        #expect(TextRecognizer.arrange(pieces) == [
+            "1. Prep the ribs: Peel the membrane.",
+            "makes them softer.",
+            "2. Parboil: Put the ribs in a pot.",
+            "3. Skim and simmer: Once boiling.",
+        ])
+    }
+
+    @Test func aNumberWithNoTextBesideItStaysWhereItIs() {
+        let pieces = [piece("7", x: 0.05, y: 0.10, width: 0.05), piece("Braise: Return the ribs.", x: 0.15, y: 0.40)]
+        #expect(TextRecognizer.arrange(pieces) == ["7", "Braise: Return the ribs."])
+    }
+
+    @Test func aNumberIsOnlyPutBesideTextToItsRight() {
+        let pieces = [piece("2", x: 0.80, y: 0.10, width: 0.05), piece("Left text on the same row.", x: 0.05, y: 0.10, width: 0.5)]
+        #expect(TextRecognizer.arrange(pieces) == ["2", "Left text on the same row."])
+    }
+
+    @Test func textThatIsNotANumberIsLeftAlone() {
+        let pieces = [piece("Ingredients", x: 0.05, y: 0.10), piece("40g bread flour", x: 0.05, y: 0.15)]
+        #expect(TextRecognizer.arrange(pieces) == ["Ingredients", "40g bread flour"])
+    }
+
+    @Test func circledNumbersKeepTheirGlyph() {
+        let pieces = [piece("②", x: 0.05, y: 0.10, width: 0.05), piece("Heat the cream.", x: 0.15, y: 0.10)]
+        #expect(TextRecognizer.arrange(pieces) == ["② Heat the cream."])
+    }
+
+    @Test func eachNumberTakesItsOwnRow() {
+        let pieces = [
+            piece("1", x: 0.05, y: 0.10, width: 0.05), piece("2", x: 0.05, y: 0.20, width: 0.05),
+            piece("First.", x: 0.15, y: 0.10), piece("Second.", x: 0.15, y: 0.20),
+        ]
+        #expect(TextRecognizer.arrange(pieces) == ["1. First.", "2. Second."])
+    }
+}
