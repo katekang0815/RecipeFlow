@@ -8,143 +8,108 @@ import Foundation
 import SwiftData
 @testable import RecipeFlow
 
+/// A saved recipe built the way the screen builds it: each section on its own.
+@MainActor
+func makeRecipe(
+    title: String = "",
+    ingredients: String = "",
+    steps: String = "",
+    in context: ModelContext
+) -> Recipe {
+    let recipe = Recipe(title: title)
+    // Insert first: SwiftData crashes if an un-inserted model touches a to-many relationship.
+    context.insert(recipe)
+    recipe.replaceIngredients(withLines: SectionText.lines(ingredients), in: context)
+    recipe.replaceSteps(with: StepParser.parse(steps), in: context)
+    return recipe
+}
+
 @MainActor
 struct RecipeEditingTests {
-    private let tangzhong = """
-    Tangzhong Bread
-    Ingredients
-    Tangzhong:
-    40g bread flour
-    200g water
-
-    580g bread flour
-    salt to taste
-    egg wash (1 egg yolk + milk)
-    Directions
-    1. Mix 40g flour with 200g water. Stir until thick.
-    2. Refrigerate for 6 hours.
-    3. Bake for 25 minutes.
-    """
-
-    private let bulleted = """
-    1. Roast the Garlic
-    • Preheat: Set your oven to 375°F (190°C).
-    • Prep: Slice just the tips off the 5 garlic bulbs.
-    2. Layer 1: Brown the Meat. Keep the heat high.
-    • Heat the pan: Drizzle oil into a skillet.
-    3. Finish
-    """
-
-    private let korean = """
-    재료
-    밥 2공기
-    김치 1컵
-    계란 2개
-    소금 약간
-    양념
-    간장 1큰술
-    만드는 법
-    1. 팬에 기름을 두르고 김치를 볶는다.
-    2. 밥을 넣고 함께 볶는다.
-    3. 계란 프라이를 올린다.
-    """
-
     private func container() -> ModelContainer {
         PersistenceController.previewContainer(withSample: false)
     }
 
     // MARK: Recipe to text
 
-    @Test func ingredientsBecomeOneLineEachWithGroupsSeparated() {
+    @Test func ingredientsBecomeOneLineEach() {
         let c = container()
-        let recipe = Recipe.create(from: tangzhong, in: c.mainContext)
-        #expect(recipe.ingredientsText == """
-        Tangzhong:
-        40 g bread flour
-        200 g water
-
-        580 g bread flour
-        salt to taste
-        egg wash (1 egg yolk + milk)
-        """)
+        let recipe = makeRecipe(ingredients: "40g bread flour\n  200g water \n\nsalt to taste", in: c.mainContext)
+        #expect(recipe.ingredientsText == "40g bread flour\n200g water\nsalt to taste")
     }
 
-    @Test func stepsBecomeNumberedLinesWithTheirBullets() {
+    @Test func olderIngredientsStillReadAsOneLine() {
         let c = container()
-        // A step's title is its first sentence without the period, so the last line has none.
-        let input = "1. Mix flour with water. Stir until thick.\n• Use a whisk.\n2. Refrigerate for 6 hours"
-        let recipe = Recipe.create(from: input, in: c.mainContext)
-        #expect(recipe.stepsText == input)
+        let recipe = Recipe(title: "Old")
+        c.mainContext.insert(recipe)
+        recipe.addIngredient(Ingredient(name: "bread flour", quantity: "40", unit: "g"))
+        recipe.addIngredient(Ingredient(name: "salt", quantity: "to taste"))
+        recipe.addIngredient(Ingredient(name: "egg wash", prepNote: "1 egg yolk + milk"))
+        #expect(recipe.ingredientsText == "40 g bread flour\nsalt to taste\negg wash (1 egg yolk + milk)")
+    }
+
+    @Test func stepsBecomeNumberedLines() {
+        let c = container()
+        let recipe = makeRecipe(steps: "1. Mix flour with water. Stir until thick.\n2. Refrigerate for 6 hours", in: c.mainContext)
+        #expect(recipe.stepsText == "1. Mix flour with water. Stir until thick.\n2. Refrigerate for 6 hours")
     }
 
     @Test func aRecipeWithoutIngredientsOrStepsGivesEmptyText() {
         let c = container()
-        let recipe = Recipe.create(from: "1. Mix.\n2. Bake.", in: c.mainContext)
-        #expect(recipe.ingredientsText == "")
-        let onlyIngredients = Recipe.create(from: "Ingredients\n2 cups flour", in: c.mainContext)
-        #expect(onlyIngredients.stepsText == "")
+        #expect(makeRecipe(steps: "1. Mix.\n2. Bake.", in: c.mainContext).ingredientsText == "")
+        #expect(makeRecipe(ingredients: "2 cups flour", in: c.mainContext).stepsText == "")
     }
 
     // MARK: Text and back again
 
-    @Test func ingredientsSurviveATripThroughText() {
-        for source in [tangzhong, korean] {
-            let original = RecipeParser.parse(source).ingredients
-            let c = container()
-            let recipe = Recipe.create(from: source, in: c.mainContext)
-            let again = RecipeParser.parse(recipe.ingredientsText, startingWithIngredients: true).ingredients
-            #expect(again == original)
+    @Test func stepsSurviveATripThroughText() {
+        let sources = [
+            "1. Mix flour with water. Stir until thick.\n2. Refrigerate for 6 hours.\n3. Bake for 25 minutes.",
+            "1. Roast the Garlic\n• Preheat: Set your oven.\n• Prep: Slice the tips.\n2. Brown the Meat. Keep the heat high.",
+            "1. 팬에 기름을 두르고 김치를 볶는다.\n2. 밥을 넣고 함께 볶는다.",
+        ]
+        for source in sources {
+            let original = StepParser.parse(source)
+            let recipe = makeRecipe(steps: source, in: container().mainContext)
+            #expect(StepParser.parse(recipe.stepsText) == original)
             #expect(!original.isEmpty)
         }
     }
 
-    @Test func stepsSurviveATripThroughText() {
-        for source in [tangzhong, bulleted, korean] {
-            let original = RecipeParser.parse(source).steps
-            let c = container()
-            let recipe = Recipe.create(from: source, in: c.mainContext)
-            let again = RecipeParser.parse(recipe.stepsText).steps
-            #expect(again == original)
-            #expect(!original.isEmpty)
-        }
+    @Test func ingredientsSurviveATripThroughText() {
+        let source = "Tangzhong:\n40g bread flour\n200g water\n\n580g bread flour\n소금 약간"
+        let recipe = makeRecipe(ingredients: source, in: container().mainContext)
+        #expect(recipe.ingredientsText.components(separatedBy: "\n") == SectionText.lines(source))
     }
 
     // MARK: Saving the edited text
 
-    @Test func addingStepsToAnIngredientsOnlyRecipeKeepsTheIngredients() throws {
+    @Test func addingStepsToAnIngredientsOnlyRecipeKeepsTheIngredients() {
         let c = container()
-        let recipe = Recipe.create(from: "Ingredients\n2 cups flour\n1 cup water\n3 eggs", in: c.mainContext)
-        #expect(recipe.steps.isEmpty)
-
-        let added = RecipeParser.parse("1. Mix the flour and water.\n2. Bake for 20 minutes.")
-        recipe.replaceSteps(with: added.steps, in: c.mainContext)
+        let recipe = makeRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs", in: c.mainContext)
+        recipe.replaceSteps(with: StepParser.parse("1. Mix the flour and water.\n2. Bake for 20 minutes."), in: c.mainContext)
 
         #expect(recipe.sortedSteps.map(\.title) == ["Mix the flour and water", "Bake for 20 minutes"])
         #expect(recipe.sortedSteps.map(\.sortIndex) == [0, 1])
-        #expect(recipe.sortedIngredients.map(\.name) == ["flour", "water", "eggs"])
+        #expect(recipe.sortedIngredients.map(\.name) == ["2 cups flour", "1 cup water", "3 eggs"])
     }
 
-    @Test func addingIngredientsToAStepsOnlyRecipeKeepsTheSteps() throws {
+    @Test func addingIngredientsToAStepsOnlyRecipeKeepsTheSteps() {
         let c = container()
-        let recipe = Recipe.create(from: "1. Mix.\n2. Bake.", in: c.mainContext)
+        let recipe = makeRecipe(steps: "1. Mix.\n2. Bake.", in: c.mainContext)
+        recipe.replaceIngredients(withLines: ["salt", "2 cups flour"], in: c.mainContext)
 
-        let added = RecipeParser.parse("salt\n2 cups flour", startingWithIngredients: true)
-        recipe.replaceIngredients(with: added.ingredients, in: c.mainContext)
-
-        #expect(recipe.sortedIngredients.map(\.name) == ["salt", "flour"])
+        #expect(recipe.sortedIngredients.map(\.name) == ["salt", "2 cups flour"])
         #expect(recipe.sortedIngredients.map(\.sortIndex) == [0, 1])
         #expect(recipe.steps.count == 2)
     }
 
     @Test func editingReplacesTheOldItemsAndLeavesNoneBehind() throws {
-        let c = container()
-        let context = c.mainContext
-        let recipe = Recipe.create(from: tangzhong, in: context)
+        let context = container().mainContext
+        let recipe = makeRecipe(ingredients: "a\nb\nc", steps: "1. One.\n2. Two.\n3. Three.", in: context)
 
-        let edited = RecipeParser.parse(recipe.stepsText + "\n4. Cool on a rack.")
-        recipe.replaceSteps(with: edited.steps, in: context)
-        let editedIngredients = RecipeParser.parse("2 cups flour", startingWithIngredients: true)
-        recipe.replaceIngredients(with: editedIngredients.ingredients, in: context)
+        recipe.replaceSteps(with: StepParser.parse(recipe.stepsText + "\n4. Cool on a rack."), in: context)
+        recipe.replaceIngredients(withLines: ["2 cups flour"], in: context)
         try context.save()
 
         #expect(recipe.sortedSteps.count == 4)
@@ -155,39 +120,14 @@ struct RecipeEditingTests {
         #expect(try context.fetch(FetchDescriptor<Ingredient>()).count == 1)
     }
 
-    @Test func editingOneRecipeDoesNotTouchAnother() throws {
-        let c = container()
-        let first = Recipe.create(from: tangzhong, in: c.mainContext)
-        let second = Recipe.create(from: tangzhong, in: c.mainContext)
-        first.replaceSteps(with: RecipeParser.parse("1. Only step.").steps, in: c.mainContext)
+    @Test func editingOneRecipeDoesNotTouchAnother() {
+        let context = container().mainContext
+        let first = makeRecipe(ingredients: "a\nb", steps: "1. One.\n2. Two.\n3. Three.", in: context)
+        let second = makeRecipe(ingredients: "a\nb", steps: "1. One.\n2. Two.\n3. Three.", in: context)
+        first.replaceSteps(with: StepParser.parse("1. Only step."), in: context)
 
         #expect(first.steps.count == 1)
         #expect(second.steps.count == 3)
-        #expect(second.ingredients.count == 5)
-    }
-
-    // MARK: Parsing an ingredient list that has no header
-
-    @Test func aHeaderlessIngredientListKeepsEveryLine() {
-        let recipe = RecipeParser.parse("salt\n2 cups flour\nTangzhong:\n40g water", startingWithIngredients: true)
-        #expect(recipe.title == nil)
-        #expect(recipe.ingredients.map(\.name) == ["salt", "flour", "water"])
-        #expect(recipe.ingredients.map(\.group) == [nil, nil, "Tangzhong"])
-    }
-
-    @Test func aHeaderlessIngredientListStillAcceptsAHeaderAndSeparatesSteps() {
-        let recipe = RecipeParser.parse("Ingredients\n2 cups flour\n1. Mix.", startingWithIngredients: true)
-        #expect(recipe.ingredients.map(\.name) == ["flour"])
-        #expect(recipe.steps.map(\.title) == ["Mix"])
-    }
-
-    @Test func numberedIngredientsStayIngredientsWhenTheTextIsAList() {
-        let recipe = RecipeParser.parse("1. 2 cups flour\n2. 1 cup sugar", startingWithIngredients: true)
-        #expect(recipe.ingredients.map(\.name) == ["flour", "sugar"])
-        #expect(recipe.steps.isEmpty)
-    }
-
-    @Test func withoutTheFlagAShortFirstLineIsATitle() {
-        #expect(RecipeParser.parse("salt\n2 cups flour").title == "salt")
+        #expect(second.ingredients.count == 2)
     }
 }

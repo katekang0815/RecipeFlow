@@ -252,12 +252,10 @@ final class RecipeFlowUITests: XCTestCase {
         )
 
         XCTAssertEqual(titleField(app).value as? String, "Tangzhong Bread")
-        XCTAssertTrue(app.staticTexts["Tangzhong"].exists, "group heading")
-        XCTAssertTrue(app.staticTexts["40 g bread flour"].exists)
-        XCTAssertTrue(app.staticTexts["580 g bread flour"].exists)
-        XCTAssertTrue(app.staticTexts["salt, to taste"].exists)
-        XCTAssertTrue(app.staticTexts["egg wash"].exists)
-        XCTAssertTrue(app.staticTexts["1 egg yolk + milk"].exists, "note under the ingredient")
+        // Ingredients are kept as written, one line each.
+        for line in ["Tangzhong:", "40g bread flour", "200g water", "580g bread flour", "salt to taste", "egg wash (1 egg yolk + milk)"] {
+            XCTAssertTrue(app.staticTexts[line].exists, line)
+        }
         XCTAssertTrue(app.staticTexts["Mix flour with water"].exists)
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
         XCTAssertEqual(app.staticTexts["noteText"].label, "Rest the dough overnight.")
@@ -268,10 +266,10 @@ final class RecipeFlowUITests: XCTestCase {
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Tangzhong Bread"))
-        XCTAssertTrue(row.label.contains("5 ingredients · 2 steps"))
+        XCTAssertTrue(row.label.contains("6 ingredients · 2 steps"))
         snap(app, "4-home-list")
         row.tap()
-        XCTAssertTrue(app.staticTexts["40 g bread flour"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["40g bread flour"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Refrigerate for 6 hours"].exists)
     }
 
@@ -283,13 +281,13 @@ final class RecipeFlowUITests: XCTestCase {
             notes: "Serve with bread."
         )
 
-        // Only the two numbered lines are steps; the bullets sit inside them.
+        // Only the two numbered lines are steps; the lines under them stay with them, as written.
         XCTAssertTrue(app.staticTexts["Roast the Garlic"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Brown the Meat"].exists)
         XCTAssertFalse(app.staticTexts["Preheat: Set your oven to 375F."].exists, "a bullet is not a step of its own")
         let detail = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Preheat")).firstMatch
         XCTAssertTrue(detail.exists)
-        XCTAssertTrue(detail.label.contains("• Prep: Slice the tips off the bulbs."))
+        XCTAssertTrue(detail.label.contains("- Prep: Slice the tips off the bulbs."))
         XCTAssertEqual(app.staticTexts["noteText"].label, "Serve with bread.")
         snap(app, "5-bulleted-steps")
     }
@@ -398,18 +396,18 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(current.contains("1. Mix the flour and water"))
         XCTAssertTrue(current.contains("2. Bake for 20 minutes"))
 
-        // Add a step, and some ingredients that this card must leave out.
+        // Add a step, with a line under it that belongs to it.
         tapEnd(of: editor)
-        editor.typeText("\n3. Cool on a rack.\nIngredients\n2 cups flour")
+        editor.typeText("\n3. Cool on a rack.\nOn a wire rack.")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("3 steps found."))
-        XCTAssertTrue(message.label.contains("1 ingredient in this text will not be added."))
         snap(app, "8-editing-steps-in-place")
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["Cool on a rack"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Mix the flour and water"].exists)
+        XCTAssertTrue(app.staticTexts["On a wire rack."].exists, "the line under a step stays with it")
         XCTAssertFalse(app.staticTexts["Ingredients"].exists, "only the steps were saved")
     }
 
@@ -423,7 +421,8 @@ final class RecipeFlowUITests: XCTestCase {
         fill(app, "Steps")
         // No "Ingredients" heading is needed in the text, and a line with no amount counts.
         addSection(app, "Ingredients")
-        XCTAssertTrue(app.staticTexts["2 ingredients found."].waitForExistence(timeout: 5))
+        // Ingredients are saved as written: no count, no check.
+        XCTAssertFalse(app.staticTexts["sectionEditorMessage"].exists)
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["2 cups flour"].waitForExistence(timeout: 5))

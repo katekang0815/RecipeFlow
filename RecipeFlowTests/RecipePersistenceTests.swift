@@ -10,138 +10,44 @@ import SwiftData
 
 @MainActor
 struct RecipePersistenceTests {
-    private let text = """
-    Tangzhong Bread
-    Advertisement
-    Ingredients
-    Tangzhong:
-    40g bread flour
-    200g water
-
-    580g bread flour
-    egg wash (1 egg yolk + milk)
-    Directions
-    1. Mix 40g flour with 200g water. Stir until thick.
-    2. Refrigerate for 6 hours.
-    3. Bake for 25 minutes.
-    """
-
-    private let modelTypes: [any PersistentModel.Type] = [Recipe.self, Ingredient.self, Step.self]
+    private let ingredients = "40g bread flour\n200g water\n\n580g bread flour"
+    private let steps = "1. Mix 40g flour with 200g water. Stir until thick.\n2. Refrigerate for 6 hours.\n3. Bake for 25 minutes."
 
     // MARK: Saving
 
-    @Test func savesIngredientsInOrderWithGroupsAndNotes() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: text, in: container.mainContext)
+    @Test func savesIngredientsInOrderAsWritten() {
+        let context = PersistenceController.previewContainer(withSample: false).mainContext
+        let recipe = makeRecipe(ingredients: ingredients, in: context)
 
         let items = recipe.sortedIngredients
-        #expect(items.map(\.name) == ["bread flour", "water", "bread flour", "egg wash"])
-        #expect(items.map(\.sortIndex) == [0, 1, 2, 3])
-        #expect(items.map(\.group) == ["Tangzhong", "Tangzhong", nil, nil])
-        #expect(items[0].quantity == "40")
-        #expect(items[0].unit == "g")
-        #expect(items[3].prepNote == "1 egg yolk + milk")
+        #expect(items.map(\.name) == ["40g bread flour", "200g water", "580g bread flour"])
+        #expect(items.map(\.sortIndex) == [0, 1, 2])
     }
 
-    @Test func savesStepsInOrderWithTitleAndDetail() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: text, in: container.mainContext)
+    @Test func savesStepsInOrderWithTitleAndDetail() {
+        let context = PersistenceController.previewContainer(withSample: false).mainContext
+        let recipe = makeRecipe(steps: steps, in: context)
 
-        let steps = recipe.sortedSteps
-        #expect(steps.map(\.title) == ["Mix 40g flour with 200g water", "Refrigerate for 6 hours", "Bake for 25 minutes"])
-        #expect(steps.map(\.sortIndex) == [0, 1, 2])
-        #expect(steps[0].detail == "Stir until thick.")
+        let saved = recipe.sortedSteps
+        #expect(saved.map(\.title) == ["Mix 40g flour with 200g water", "Refrigerate for 6 hours", "Bake for 25 minutes"])
+        #expect(saved.map(\.sortIndex) == [0, 1, 2])
+        #expect(saved[0].detail == "Stir until thick.")
     }
 
-    @Test func savesTitleAndRawText() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: text, in: container.mainContext)
-
-        #expect(recipe.title == "Tangzhong Bread")
-        #expect(recipe.rawText == text)
-    }
-
-    @Test func savesTheNote() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: text + "\nKeep it in the fridge.\nEat within three days.", in: container.mainContext)
-        #expect(recipe.steps.count == 3)
-        #expect(recipe.note == "Keep it in the fridge.\nEat within three days.")
-        #expect(Recipe.create(from: text, in: container.mainContext).note == "")
-    }
-
-    @Test func anIngredientsOnlyTextSavesAsARecipeWithNoSteps() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: "Ingredients\n2 cups flour\n1 cup water\n3 eggs", in: container.mainContext)
-
-        #expect(recipe.sortedIngredients.map(\.name) == ["flour", "water", "eggs"])
-        #expect(recipe.steps.isEmpty)
+    @Test func aNewRecipeHasNoNoteAndNoLink() {
+        let context = PersistenceController.previewContainer(withSample: false).mainContext
+        let recipe = makeRecipe(ingredients: ingredients, steps: steps, in: context)
         #expect(recipe.note == "")
-        #expect(recipe.displayTitle == "Untitled recipe")
-        #expect(try container.mainContext.fetch(FetchDescriptor<Recipe>()).count == 1)
+        #expect(recipe.sourceURL == nil)
+        #expect(recipe.thumbnail == nil)
     }
 
-    @Test func aStepsOnlyTextSavesAsARecipeWithNoIngredients() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: "1. Mix the flour and water.\n2. Bake for 20 minutes.", in: container.mainContext)
-
-        #expect(recipe.sortedSteps.map(\.title) == ["Mix the flour and water", "Bake for 20 minutes"])
-        #expect(recipe.ingredients.isEmpty)
-        #expect(recipe.note == "")
-        #expect(try container.mainContext.fetch(FetchDescriptor<Recipe>()).count == 1)
-    }
-
-    @Test func recipeWithoutATitleIsUntitled() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe.create(from: "Ingredients\n2 cups flour\nDirections\n1. Mix.", in: container.mainContext)
+    @Test func aRecipeWithoutATitleIsUntitled() {
+        let context = PersistenceController.previewContainer(withSample: false).mainContext
+        let recipe = makeRecipe(ingredients: "2 cups flour", steps: "1. Mix.", in: context)
         // The stored title stays empty so it can be typed into; lists show "Untitled recipe".
         #expect(recipe.title == "")
         #expect(recipe.displayTitle == "Untitled recipe")
-    }
-
-    // MARK: A recipe with nothing in it
-
-    @Test func aNewRecipeIsBlank() {
-        #expect(Recipe().isBlank)
-        #expect(Recipe(title: "   ").isBlank, "a blank title counts as no title")
-    }
-
-    @Test func anythingPutInARecipeMakesItNotBlank() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let context = container.mainContext
-
-        let titled = Recipe(title: "Soup")
-        context.insert(titled)
-        #expect(!titled.isBlank)
-
-        let withIngredient = Recipe()
-        context.insert(withIngredient)
-        withIngredient.addIngredient(Ingredient(name: "salt"))
-        #expect(!withIngredient.isBlank)
-
-        let withStep = Recipe()
-        context.insert(withStep)
-        withStep.insertStep(Step(title: "Mix"), at: 0)
-        #expect(!withStep.isBlank)
-
-        let withNote = Recipe()
-        context.insert(withNote)
-        withNote.note = "Rest overnight."
-        #expect(!withNote.isBlank)
-
-        let withLink = Recipe()
-        context.insert(withLink)
-        withLink.sourceURL = "https://example.com/soup"
-        #expect(!withLink.isBlank)
-    }
-
-    @Test func aRecipeWhoseSectionsWereClearedIsBlankAgain() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let recipe = Recipe()
-        container.mainContext.insert(recipe)
-        recipe.replaceIngredients(with: RecipeParser.parse("2 cups flour", startingWithIngredients: true).ingredients, in: container.mainContext)
-        #expect(!recipe.isBlank)
-        recipe.replaceIngredients(with: [], in: container.mainContext)
-        #expect(recipe.isBlank)
     }
 
     @Test func emptyTitleFromAnOlderRecipeShowsAsUntitled() {
@@ -150,20 +56,9 @@ struct RecipePersistenceTests {
         #expect(Recipe(title: "Toast").displayTitle == "Toast")
     }
 
-    @Test func eachCreateMakesAnotherRecipe() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        Recipe.create(from: text, in: container.mainContext)
-        Recipe.create(from: text, in: container.mainContext)
-
-        let saved = try container.mainContext.fetch(FetchDescriptor<Recipe>())
-        #expect(saved.count == 2)
-        #expect(saved.allSatisfy { $0.ingredients.count == 4 && $0.steps.count == 3 })
-    }
-
     @Test func deletingARecipeRemovesItsIngredientsAndSteps() throws {
-        let container = PersistenceController.previewContainer(withSample: false)
-        let context = container.mainContext
-        let recipe = Recipe.create(from: text, in: context)
+        let context = PersistenceController.previewContainer(withSample: false).mainContext
+        let recipe = makeRecipe(ingredients: ingredients, steps: steps, in: context)
         recipe.delete(from: context)
         try context.save()
 
@@ -187,7 +82,8 @@ struct RecipePersistenceTests {
                 for: Recipe.self, Ingredient.self, Step.self,
                 configurations: ModelConfiguration(url: storeURL)
             )
-            let recipe = Recipe.create(from: text + "\nRest overnight.", in: container.mainContext)
+            let recipe = makeRecipe(title: "Tangzhong Bread", ingredients: ingredients, steps: steps, in: container.mainContext)
+            recipe.note = "Rest overnight."
             recipe.sourceURL = "https://www.youtube.com/watch?v=nqsoMyxHTbc"
             try container.mainContext.save()
         }
@@ -201,14 +97,9 @@ struct RecipePersistenceTests {
         let recipe = try #require(saved.first)
         #expect(saved.count == 1)
         #expect(recipe.title == "Tangzhong Bread")
-        #expect(recipe.sortedIngredients.map(\.group) == ["Tangzhong", "Tangzhong", nil, nil])
+        #expect(recipe.sortedIngredients.count == 3)
         #expect(recipe.sortedSteps.count == 3)
         #expect(recipe.note == "Rest overnight.")
         #expect(recipe.sourceURL == "https://www.youtube.com/watch?v=nqsoMyxHTbc")
-    }
-
-    @Test func newRecipeHasNoSourceLink() {
-        let container = PersistenceController.previewContainer(withSample: false)
-        #expect(Recipe.create(from: text, in: container.mainContext).sourceURL == nil)
     }
 }

@@ -245,8 +245,6 @@ struct RecipeFlowView: View {
 
     /// The card while it is being edited: its text as a field, and what saving it would do.
     private func editor(for section: RecipeSection) -> some View {
-        let parsed = SectionText.parse(section, draft)
-
         return VStack(alignment: .leading, spacing: 8) {
             TextField(
                 "",
@@ -266,7 +264,8 @@ struct RecipeFlowView: View {
             .onTapGesture { focus = .section(section) }
             .accessibilityIdentifier("\(section.noun)Editor")
 
-            if let status = SectionText.status(section, text: draft, parsed: parsed) {
+            // Only steps are checked: ingredients and notes are saved as written.
+            if section == .steps, let status = SectionText.stepsStatus(draft) {
                 Text(status)
                     .font(.footnote)
                     .foregroundStyle(Theme.ink.opacity(0.7))
@@ -304,33 +303,32 @@ struct RecipeFlowView: View {
         focus = .section(section)
     }
 
-    /// Saves the card being edited. A blank card empties the section. Text with nothing valid in it,
-    /// such as steps with no numbers, is not saved: it stays on screen with its message, or is dropped
-    /// when `discardInvalid` is set.
+    /// Saves the card being edited. A blank card empties the section. Ingredients and notes are saved
+    /// as written. Steps need a number: text with none is not saved, and stays on screen with its message,
+    /// or is dropped when `discardInvalid` is set.
     private func finishEditing(discardInvalid: Bool) {
         guard let section = editing else { return }
 
         let isBlank = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let parsed = SectionText.parse(section, draft)
-        let found = SectionText.count(section, parsed)
+        let changed = draftStart != draft
 
         if isBlank {
-            if draftStart != draft { apply(ParsedRecipe(), to: section) }
-        } else if found > 0 {
-            if draftStart != draft { apply(parsed, to: section) }
-        } else if !discardInvalid {
-            return
+            if changed { apply(draft, to: section) }
+        } else if section == .steps, StepParser.parse(draft).isEmpty {
+            if !discardInvalid { return }
+        } else if changed {
+            apply(draft, to: section)
         }
         editing = nil
         draft = ""
         draftStart = ""
     }
 
-    private func apply(_ parsed: ParsedRecipe, to section: RecipeSection) {
+    private func apply(_ text: String, to section: RecipeSection) {
         switch section {
-        case .ingredients: recipe.replaceIngredients(with: parsed.ingredients, in: context)
-        case .steps: recipe.replaceSteps(with: parsed.steps, in: context)
-        case .notes: recipe.note = parsed.note.joined(separator: "\n")
+        case .ingredients: recipe.replaceIngredients(withLines: SectionText.lines(text), in: context)
+        case .steps: recipe.replaceSteps(with: StepParser.parse(text), in: context)
+        case .notes: recipe.note = SectionText.lines(text).joined(separator: "\n")
         }
     }
 
@@ -353,58 +351,17 @@ struct RecipeFlowView: View {
 
     // MARK: Ingredients
 
-    /// Consecutive ingredients with the same group, so each group gets one heading.
-    private func grouped(_ items: [Ingredient]) -> [(group: String?, items: [Ingredient])] {
-        var result: [(group: String?, items: [Ingredient])] = []
-        for item in items {
-            if let last = result.last, last.group == item.group {
-                result[result.count - 1].items.append(item)
-            } else {
-                result.append((item.group, [item]))
-            }
-        }
-        return result
-    }
-
     @ViewBuilder
     private func ingredients(_ items: [Ingredient]) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(grouped(items).enumerated()), id: \.offset) { _, block in
-                VStack(alignment: .leading, spacing: 8) {
-                    if let group = block.group {
-                        Text(group)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                    }
-                    ForEach(block.items) { item in
-                        ingredientRow(item)
-                    }
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                Text(Recipe.line(for: item))
+                    .foregroundStyle(Theme.ink)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-    }
-
-    /// "40 g bread flour", or "salt, to taste" when the amount has no number.
-    private func label(for item: Ingredient) -> String {
-        if item.quantity.contains(where: \.isNumber) || item.quantity.isEmpty {
-            return [item.quantity, item.unit, item.name].filter { !$0.isEmpty }.joined(separator: " ")
-        }
-        return "\(item.name), \(item.quantity)"
-    }
-
-    private func ingredientRow(_ item: Ingredient) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label(for: item))
-                .foregroundStyle(Theme.ink)
-            if !item.prepNote.isEmpty {
-                Text(item.prepNote)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.ink.opacity(0.6))
-            }
-        }
     }
 
     // MARK: Steps
@@ -487,16 +444,10 @@ struct RecipeFlowView: View {
 
 #Preview {
     let container = PersistenceController.previewContainer(withSample: false)
-    let recipe = Recipe.create(from: """
-    Toast
-    Ingredients
-    2 slices bread
-    1 tbsp butter
-    salt to taste
-    Directions
-    1. Toast the bread. Let it cool a little.
-    2. Spread the butter on top.
-    """, in: container.mainContext)
+    let recipe = Recipe(title: "Toast")
+    container.mainContext.insert(recipe)
+    recipe.replaceIngredients(withLines: ["2 slices bread", "1 tbsp butter"], in: container.mainContext)
+    recipe.replaceSteps(with: StepParser.parse("1. Toast the bread. Let it cool a little.\n2. Spread the butter on top."), in: container.mainContext)
     return NavigationStack { RecipeFlowView(recipe: recipe) }
         .modelContainer(container)
 }
