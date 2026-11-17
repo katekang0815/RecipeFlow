@@ -352,6 +352,18 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testPhotoStepsWithNoNumbersBecomeOneStepPerSentence() throws {
+        let app = launchApp(photoText: ["steps": "Mix the flour.\nBake it\nuntil golden.\nCool it."])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        for number in ["1", "2", "3"] {
+            XCTAssertTrue(app.staticTexts[number].exists, "step \(number)")
+        }
+        XCTAssertTrue(app.staticTexts["Bake it until golden"].exists)
+        XCTAssertFalse(app.staticTexts["4"].exists)
+    }
+
+    @MainActor
     func testStepsAddedAgainContinueTheNumbers() throws {
         let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it.\n3. Cool it."])
         openNewRecipe(app)
@@ -371,15 +383,20 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: Filling and editing the cards in place
 
     @MainActor
-    func testStepsFromAPhotoAreCheckedBeforeTheyAreSaved() throws {
-        let app = launchApp(photoText: ["ingredients": "2 cups flour\n1 cup water\n3 eggs", "steps": "Mix it"])
+    func testStepsTypedWithoutNumbersAreCheckedBeforeTheyAreSaved() throws {
+        let app = launchApp(photoText: [
+            "ingredients": "2 cups flour\n1 cup water\n3 eggs",
+            "steps": "1. Mix the flour and water.\n2. Bake for 20 minutes.",
+        ])
         openNewRecipe(app)
         fill(app, "Ingredients")
         addSection(app, "Steps")
         let editor = cardEditor(app, "steps")
         waitForKeyboard(app)
 
-        // Text with no numbered line is not steps, and the card says so.
+        // Typed text with no numbered line is not steps, and the card says so.
+        editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 80))
+        editor.typeText("Mix it")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("No numbered steps found"))

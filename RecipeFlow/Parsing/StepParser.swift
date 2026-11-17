@@ -27,14 +27,40 @@ enum StepParser {
 
     /// The text with its steps numbered one after another from `first`, whatever numbers it had.
     /// Each step's lines are kept as written; only the number in front of the step is replaced.
-    /// Text with no steps in it is returned as it is.
+    /// Text with no number anywhere is split at the end of each sentence instead, see `bySentence`.
     static func renumbered(_ text: String, from first: Int) -> String {
         let steps = stepLines(in: text)
-        guard !steps.isEmpty else { return text }
+        guard !steps.isEmpty else { return bySentence(text, from: first) }
         return steps.enumerated().map { index, lines in
             (["\(first + index). \(lines[0])"] + lines.dropFirst()).joined(separator: "\n")
         }
         .joined(separator: "\n")
+    }
+
+    /// Text that has no number anywhere, as from a photo whose numbers were lost: one step per sentence,
+    /// numbered from `first`. A step runs on to the line that ends a sentence, and a line in brackets
+    /// stays with the step above it. A bullet in front of a step is dropped.
+    static func bySentence(_ text: String, from first: Int) -> String {
+        var steps: [String] = []
+        var open = false  // the last step has not reached the end of its sentence
+        for line in normalizedLines(text) where !line.isEmpty {
+            if let last = steps.indices.last, open {
+                steps[last] += " " + line
+            } else if let last = steps.indices.last, line.hasPrefix("(") || line.hasPrefix("（") {
+                steps[last] += "\n" + line
+            } else {
+                steps.append(line.replacing(/^[•·●○▪◦*\-–—]\s*/, with: ""))
+            }
+            open = !endsSentence(steps[steps.count - 1])
+        }
+        return steps.enumerated().map { "\(first + $0.offset). \($0.element)" }.joined(separator: "\n")
+    }
+
+    /// A full stop, even when a closing bracket or quote follows it; Korean sentences may end in 다 or 요.
+    private static func endsSentence(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: CharacterSet(charactersIn: ")）\"”’ "))
+        guard let last = trimmed.last else { return false }
+        return ".!?。！？다요".contains(last)
     }
 
     /// Each step as its lines, the number taken off the first.
