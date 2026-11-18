@@ -71,6 +71,22 @@ struct SectionTextTests {
         #expect(SectionText.appendingSteps("® Lower.\n® Raise.", to: "1. Mix.\n2. Bake.") == "1. Mix.\n2. Bake.\n3. Lower.\n4. Raise.")
     }
 
+    @Test func dashedBulletedParenthesizedAndLetteredListsAreAllNumberedOnFromTheLastStep() {
+        let existing = "1. Mix.\n2. Bake."
+        let lists = [
+            "- Cool it.\n- Serve it.",
+            "• Cool it.\n• Serve it.",
+            "(1) Cool it.\n(2) Serve it.",
+            "(a) Cool it.\n(b) Serve it.",
+            "a. Cool it.\nb. Serve it.",
+            "a) Cool it.\nb) Serve it.",
+            "I. Cool it.\nII. Serve it.",
+        ]
+        for list in lists {
+            #expect(SectionText.appendingSteps(list, to: existing) == "1. Mix.\n2. Bake.\n3. Cool it.\n4. Serve it.", "\(list)")
+        }
+    }
+
     @Test func stepsAddedToAnEmptyCardStartAtOne() {
         #expect(SectionText.appendingSteps("4. Mix.\n5. Bake.", to: "") == "1. Mix.\n2. Bake.")
     }

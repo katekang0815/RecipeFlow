@@ -352,16 +352,155 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchApp(photoText: ["steps": "Mix the flour.\nBake it until golden.\nCool it."])
         openNewRecipe(app)
         app.buttons["addSectionButton"].tap()
+        XCTAssertTrue(app.buttons["Steps"].waitForExistence(timeout: 5))
         app.buttons["Steps"].tap()
-        app.buttons["Choose from library"].tap()
+        let library = app.buttons["Choose from library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 5))
+        sleep(1)  // let the choices finish sliding in before tapping one
+        library.tap()
 
+        // The photo is read first, which takes a moment: look once a second.
+        var shown = false
+        for _ in 0..<30 {
+            if app.alerts.count > 0 { shown = true; break }
+            sleep(1)
+        }
+        XCTAssertTrue(shown, "the alert did not appear")
         let alert = app.alerts.firstMatch
-        // The photo is read first, which takes a moment.
-        XCTAssertTrue(alert.waitForExistence(timeout: 20))
         XCTAssertTrue(alert.staticTexts["Only numbered steps are valid"].exists, alert.debugDescription)
         alert.buttons["OK"].tap()
         XCTAssertFalse(app.staticTexts["Steps"].exists, "nothing was added")
         XCTAssertFalse(cardEditor(app, "steps").exists)
+    }
+
+    @MainActor
+    func testReturnInTheMiddleOfAStepStartsTheNextStepThere() throws {
+        let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it. Cool it."])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        app.staticTexts["Bake it. Cool it."].tap()
+
+        let editor = cardEditor(app, "steps")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        // Put the cursor inside the second line, then press Return there.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7)).tap()
+        editor.typeText("\n")
+        sleep(1)
+
+        let lines = (editor.value as? String ?? "").components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 3, "the second step was split in two: \(lines)")
+        XCTAssertEqual(lines.first, "1. Mix the flour.")
+        XCTAssertTrue(lines.count == 3 && lines[1].count > 3 && lines[2].count > 3, "split inside the line, not at its end: \(lines)")
+        XCTAssertTrue(lines.count == 3 && lines[1].hasPrefix("2. ") && lines[2].hasPrefix("3. "), "\(lines)")
+        if lines.count == 3 {
+            let joined = lines[1].dropFirst(3) + " " + lines[2].dropFirst(3)
+            XCTAssertEqual(joined.trimmingCharacters(in: .whitespaces), "Bake it. Cool it.")
+        }
+        XCTAssertEqual(app.staticTexts["sectionEditorMessage"].label, "3 steps found.")
+        tapDone(app)
+
+        XCTAssertTrue(app.staticTexts["3"].waitForExistence(timeout: 5), "three steps")
+    }
+
+    @MainActor
+    func testReturnAtTheEndOfTheStepsMakesTheNextNumberToTypeInto() throws {
+        let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it."])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        app.staticTexts["Bake it."].tap()
+
+        let editor = cardEditor(app, "steps")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        tapEnd(of: editor)
+        editor.typeText("\n")
+        sleep(1)
+        editor.typeText("Cool it.")
+        XCTAssertTrue(app.staticTexts["3 steps found."].waitForExistence(timeout: 5))
+        XCTAssertEqual(editor.value as? String, "1. Mix the flour.\n2. Bake it.\n3. Cool it.")
+    }
+
+    @MainActor
+    func testReturnInIngredientsStaysAPlainLineBreak() throws {
+        let app = launchApp(photoText: ["ingredients": "2 cups flour"])
+        openNewRecipe(app)
+        fill(app, "Ingredients")
+        app.staticTexts["2 cups flour"].tap()
+        let editor = cardEditor(app, "ingredients")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        tapEnd(of: editor)
+        editor.typeText("\nsalt")
+        XCTAssertEqual(editor.value as? String, "2 cups flour\nsalt")
+    }
+
+    @MainActor
+    func testTheTopBarHasNoTitleText() throws {
+        let app = launchApp()
+        openNewRecipe(app)
+        XCTAssertEqual(app.navigationBars.staticTexts.count, 0, "just the back button")
+        typeTitle(app, "Soup")
+        XCTAssertEqual(app.navigationBars.staticTexts.count, 0)
+        XCTAssertEqual(titleField(app).value as? String, "Soup", "the large title is the recipe title")
+    }
+
+    @MainActor
+    func testTappingAStepPutsTheCursorAtTheEndOfThatStep() throws {
+        guard #available(iOS 18, *) else { return }  // the cursor can only be placed from iOS 18
+        let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it.\n3. Cool it."])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        app.staticTexts["Bake it."].tap()
+        let editor = cardEditor(app, "steps")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        sleep(1)
+        editor.typeText("!")
+        XCTAssertEqual(editor.value as? String, "1. Mix the flour.\n2. Bake it.!\n3. Cool it.")
+    }
+
+    @MainActor
+    func testEditingAStepNearTheTopOfALongListKeepsItOnScreen() throws {
+        let many = (1...30).map { "\($0). Step number \($0) of the recipe." }.joined(separator: "\n")
+        let app = launchApp(photoText: ["steps": many])
+        openNewRecipe(app)
+        fill(app, "Steps")
+        // Scroll to the top, tap the first step, and type: the card must not jump to its bottom.
+        app.swipeDown(velocity: .fast)
+        let first = app.staticTexts["Step number 1 of the recipe."]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        first.tap()
+        let editor = cardEditor(app, "steps")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        sleep(1)
+        editor.typeText("x")
+        sleep(1)
+        XCTAssertGreaterThanOrEqual(editor.frame.minY, 0, "the top of the card, where the cursor is, stays on screen")
+    }
+
+    @MainActor
+    func testEditingACardShowsPlaceholderButtonsAboveTheKeyboardAndBesideTheBackButton() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough overnight."])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        for id in ["undoButton", "shareButton", "moreButton", "checkButton", "boldButton", "italicButton",
+                   "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
+            XCTAssertFalse(app.buttons[id].exists, "\(id) is only there while editing")
+        }
+
+        app.staticTexts["noteText"].tap()
+        XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        for id in ["undoButton", "shareButton", "moreButton", "checkButton", "boldButton", "italicButton",
+                   "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
+            XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id)
+        }
+        // The first group sits in the top bar, the second just above the keyboard.
+        XCTAssertLessThan(app.buttons["checkButton"].frame.maxY, app.keyboards.firstMatch.frame.minY / 3)
+        XCTAssertLessThanOrEqual(app.buttons["boldButton"].frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+        snap(app, "13-editing-buttons")
     }
 
     @MainActor
@@ -403,7 +542,10 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(message.label.contains("Only numbered steps are valid"))
 
         editor.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6))
-        editor.typeText("1. Mix the flour and water.\n2. Bake for 20 minutes.")
+        editor.typeText("1. Mix the flour and water.")
+        editor.typeText("\n")  // Return numbers step 2
+        sleep(1)
+        editor.typeText("Bake for 20 minutes.")
         XCTAssertTrue(app.staticTexts["2 steps found."].waitForExistence(timeout: 5))
         snap(app, "7-typing-steps-in-the-card")
         tapDone(app)
@@ -433,16 +575,17 @@ final class RecipeFlowUITests: XCTestCase {
 
         // Add a step, with a line under it that belongs to it.
         tapEnd(of: editor)
-        editor.typeText("\n3. Cool on a rack.\nOn a wire rack.")
+        editor.typeText("\n")  // Return starts step 3 by itself
+        sleep(1)  // the cursor is placed a moment after the line break
+        editor.typeText("Cool on a rack.")
         let message = app.staticTexts["sectionEditorMessage"]
         XCTAssertTrue(message.waitForExistence(timeout: 5))
         XCTAssertTrue(message.label.contains("3 steps found."))
         snap(app, "8-editing-steps-in-place")
         tapDone(app)
 
-        XCTAssertTrue(app.staticTexts["Cool on a rack. On a wire rack."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Cool on a rack."].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Mix the flour and water."].exists)
-        // The line under a step is part of its paragraph.
         XCTAssertFalse(app.staticTexts["Ingredients"].exists, "only the steps were saved")
     }
 

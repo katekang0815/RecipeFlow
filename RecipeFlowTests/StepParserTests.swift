@@ -131,4 +131,60 @@ struct StepParserTests {
     @Test func aSymbolInTheMiddleOfALineIsNotAStep() {
         #expect(steps("1. Mix with a whisk®.\nthe big one @ the front.") == ["Mix with a whisk®. the big one @ the front."])
     }
+
+    // MARK: Circled numbers read as other symbols
+
+    @Test func aListOfCirclesReadAsBulletsAndSymbolsIsAllSteps() {
+        // What the text reader returned for a list of circled 1 to 8.
+        let text = """
+        • Grind the tea leaves with a coffee grinder.
+        * For the cream, add ground tea to whipping cream and heat gently over low heat.
+        ® Seal and refrigerate for at least 3 hours.
+        * Boil the milk with the tea in the same way.
+        G Cover with plastic wrap and let sit for 20 minutes.
+        © Place egg whites, sugar, and lemon juice in a large bowl and freeze for about 20-30 minutes.
+        • In a medium glass bowl, add milk (with some tea removed), then add oil and mix until emulsified.
+        ® Sift in the cake flour.
+        """
+        let found = steps(text)
+        #expect(found.count == 8)
+        #expect(found[0] == "Grind the tea leaves with a coffee grinder.")
+        #expect(found[4] == "Cover with plastic wrap and let sit for 20 minutes.")
+        #expect(found[6].hasPrefix("In a medium glass bowl"))
+    }
+
+    @Test func bulletsAreStillInsideTheirStepNextToOrdinaryNumbers() {
+        #expect(steps("1. Roast.\n• Preheat the oven.\n* Slice the tips.\n2. Brown.") == ["Roast. • Preheat the oven. * Slice the tips.", "Brown."])
+    }
+
+    @Test func oneBulletAloneIsNotAList() {
+        #expect(steps("• Preheat the oven.\nSlice the tips.") == [])
+    }
+
+    @Test func aLetterInFrontOfAWordIsNotAStepOutsideACircleList() {
+        #expect(steps("1. Mix.\nA Large bowl is best.") == ["Mix. A Large bowl is best."])
+    }
+
+    // MARK: Lists of dashes, (1) and a.
+
+    @Test func aListOfDashesIsSteps() {
+        #expect(steps("- Mix the flour.\n- Bake it.\n- Cool it.") == ["Mix the flour.", "Bake it.", "Cool it."])
+        #expect(steps("– Mix.\n— Bake.") == ["Mix.", "Bake."])
+    }
+
+    @Test func aDashWithNoSpaceIsNotAList() {
+        #expect(steps("-5°C is cold.\n-10°C is colder.") == [])
+    }
+
+    @Test func dashesNextToOrdinaryNumbersStayInTheirStep() {
+        #expect(steps("1. Roast.\n- Preheat the oven.\n- Slice the tips.\n2. Brown.") == ["Roast. - Preheat the oven. - Slice the tips.", "Brown."])
+    }
+
+    @Test func oneDashLineIsNotAList() {
+        #expect(steps("- Preheat the oven.\nSlice the tips.") == [])
+    }
+
+    @Test func aMixOfBulletsAndDashesIsOneList() {
+        #expect(steps("• Mix.\n- Bake.\n* Cool.") == ["Mix.", "Bake.", "Cool."])
+    }
 }

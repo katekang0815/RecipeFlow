@@ -18,7 +18,8 @@ struct ParsedStep: Equatable {
 /// A number may also sit alone on its line, as a number in a circle does when a photo is read:
 /// the next line is then the step. Lines after a numbered line belong to its step, and a step is kept
 /// as one paragraph: its lines joined with spaces, with every symbol the text reader returned.
-/// Nothing else is looked for: no headers, bullets, ingredients or notes.
+/// A list of bullets or dashes (at least two lines, and no ordinary numbers in the text) counts too:
+/// each line is a step. Nothing else is looked for: no headers, ingredients or notes.
 enum StepParser {
     static func parse(_ text: String) -> [ParsedStep] {
         stepLines(in: text).map(makeStep)
@@ -38,32 +39,59 @@ enum StepParser {
 
     /// Each step as its lines, the number taken off the first.
     private static func stepLines(in text: String) -> [[String]] {
+        let lines = normalizedLines(text)
         var steps: [[String]] = []
-        var previous = 0  // the last number seen, for numbers that have no punctuation
-        var numberAlone = false  // the last line was just a number, so the next line is its step
-
-        for line in normalizedLines(text) where !line.isEmpty {
-            if let marker = marker(in: line, after: previous) {
-                if let number = marker.number { previous = number }
-                if marker.rest.isEmpty {
-                    numberAlone = true
-                } else {
-                    numberAlone = false
-                    steps.append([marker.rest])
-                }
-            } else if numberAlone {
-                numberAlone = false
-                steps.append([line])
-            } else if !steps.isEmpty {
-                steps[steps.count - 1].append(line)
+        for (line, role) in zip(lines, roles(of: lines)) {
+            switch role {
+            case .start(let rest): steps.append([rest])
+            case .afterNumber: steps.append([line])
+            case .text: if !line.isEmpty, !steps.isEmpty { steps[steps.count - 1].append(line) }
+            case .numberOnly: break
             }
         }
         return steps
     }
 
+    /// What each line of a text is, for finding where steps start.
+    enum Role: Equatable {
+        /// A line that starts a step; `rest` is what follows its number.
+        case start(rest: String)
+        /// A number alone on its line: the step is the next line.
+        case numberOnly
+        /// The line after a number that was alone: the text of that step.
+        case afterNumber
+        /// Any other line, empty ones included: part of the step above, or left out before the first step.
+        case text
+    }
+
+    /// The role of each of `lines`, which are already normalized (see `normalizedLines`).
+    static func roles(of lines: [String]) -> [Role] {
+        var previous = 0  // the last number seen, for numbers that have no punctuation
+        var numberAlone = false  // the last line was just a number, so the next line is its step
+        let circleList = isCircleList(lines)
+
+        return lines.map { line in
+            guard !line.isEmpty else { return .text }
+            if let marker = marker(in: line, after: previous, circleList: circleList) {
+                if let number = marker.number { previous = number }
+                if marker.rest.isEmpty {
+                    numberAlone = true
+                    return .numberOnly
+                }
+                numberAlone = false
+                return .start(rest: marker.rest)
+            }
+            if numberAlone {
+                numberAlone = false
+                return .afterNumber
+            }
+            return .text
+        }
+    }
+
     // MARK: Lines
 
-    private static func normalizedLines(_ text: String) -> [String] {
+    static func normalizedLines(_ text: String) -> [String] {
         text.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n")
@@ -96,7 +124,7 @@ enum StepParser {
         var rest: String
     }
 
-    static func marker(in line: String, after previous: Int) -> Marker? {
+    static func marker(in line: String, after previous: Int, circleList: Bool = false) -> Marker? {
         // ① ⑴ ⒈ ❶ ➊ ⓫ ㉑ ㊱
         if let first = line.first, let number = circledValue(first) {
             return Marker(number: number, rest: String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
@@ -104,6 +132,16 @@ enum StepParser {
         // A circle the text reader could not read as a number: it comes out as ® © @, or a circled letter
         if let first = line.first, isCircleMark(first) {
             return Marker(number: nil, rest: String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
+        }
+        if circleList {
+            // A list of circled numbers, all read as something else: a bullet or star, or a single letter
+            // in front of a capital ("G Cover with plastic wrap").
+            if startsWithBullet(line) {
+                return Marker(number: nil, rest: String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
+            }
+            if let match = line.wholeMatch(of: /[A-Za-z]\s+(\p{Lu}.*)/) {
+                return Marker(number: nil, rest: String(match.1))
+            }
         }
         // (1) (a) (iv)
         if let match = line.wholeMatch(of: /\((\d{1,2}|[A-Za-z]|[IVXivx]{1,4})\)\s*(.*)/) {
@@ -129,6 +167,34 @@ enum StepParser {
             return Marker(number: nil, rest: "")
         }
         return nil
+    }
+
+    private static let bullets: Set<Character> = ["•", "·", "●", "○", "◦", "▪", "‣", "*"]
+    private static let dashes: Set<Character> = ["-", "–", "—"]
+
+    /// A bullet, or a dash with a space after it ("- Mix"; "-5°C" is not a list).
+    private static func startsWithBullet(_ line: String) -> Bool {
+        guard let first = line.first else { return false }
+        if bullets.contains(first) { return true }
+        return dashes.contains(first) && line.dropFirst().first?.isWhitespace == true
+    }
+
+    /// A photo of circled numbers whose circles were all read as other symbols: no line has an ordinary
+    /// number (1. (1) a. I.), and at least two start with a circle, a symbol standing for one, or a bullet.
+    /// Only then is a bullet or star the start of a step; next to ordinary numbers it is a line inside one.
+    private static func isCircleList(_ lines: [String]) -> Bool {
+        let hasNumbers = lines.contains { line in
+            line.wholeMatch(of: /\((\d{1,2}|[A-Za-z]|[IVXivx]{1,4})\)\s*(.*)/) != nil
+                || line.wholeMatch(of: /(\d{1,2})\s*[.)\]:、](?!\d)\s*(.*)/) != nil
+                || line.wholeMatch(of: /\d{1,3}/) != nil
+                || line.wholeMatch(of: /([IVXivx]{1,4}|[A-Za-z])\s*[.)](?=\s|$)\s*(.*)/) != nil
+        }
+        guard !hasNumbers else { return false }
+        let circles = lines.filter { line in
+            guard let first = line.first else { return false }
+            return circledValue(first) != nil || isCircleMark(first) || startsWithBullet(line)
+        }
+        return circles.count >= 2
     }
 
     /// What the text reader makes of a circled number it cannot read (a circled 17 often comes out as ®),
