@@ -481,7 +481,7 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchApp(photoText: ["notes": "Rest the dough overnight."])
         openNewRecipe(app)
         fill(app, "Notes")
-        for id in ["undoButton", "moreButton", "checkButton", "boldButton", "italicButton",
+        for id in ["undoButton", "scanButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertFalse(app.buttons[id].exists, "\(id) is only there while editing")
         }
@@ -492,7 +492,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.buttons["undoButton"].exists, "nothing to undo yet")
         XCTAssertFalse(app.buttons["shareButton"].exists)
         XCTAssertFalse(app.buttons["strikethroughButton"].exists)
-        for id in ["moreButton", "checkButton", "boldButton", "italicButton",
+        for id in ["scanButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id)
         }
@@ -988,5 +988,37 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText("Pasted note")
         app.buttons["checkButton"].tap()
         XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testTheScanButtonReadsAPhotoIntoTheCardBeingEdited() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough."])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        app.staticTexts["noteText"].tap()
+        let editor = cardEditor(app, "notes")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        XCTAssertFalse(app.buttons["moreButton"].exists, "the three dots are gone")
+
+        // The Simulator has no camera, so the scan button reads a library picture.
+        app.buttons["scanButton"].tap()
+        let added = NSPredicate { _, _ in (self.cardEditor(app, "notes").value as? String)?.contains("Rest the dough.\nRest the dough.") == true }
+        let expectation = XCTNSPredicateExpectation(predicate: added, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 10), .completed, "the photo's text was added after the note")
+    }
+
+    @MainActor
+    func testTheLinkButtonAboveTheKeyboardOpensTheSourceLinkScreen() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough."])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        app.staticTexts["noteText"].tap()
+        XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+
+        app.buttons["linkButton"].tap()
+        XCTAssertTrue(app.textFields["sourceLinkField"].waitForExistence(timeout: 5), "the add source link screen")
+        XCTAssertTrue(app.buttons["saveSourceLinkButton"].exists)
     }
 }

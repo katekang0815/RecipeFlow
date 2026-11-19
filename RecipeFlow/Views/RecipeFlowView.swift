@@ -34,6 +34,8 @@ struct RecipeFlowView: View {
     /// The card being edited has the keyboard.
     @State private var sectionFocused = false
     @StateObject private var richText = RichTextController()
+    /// The scan button asks the camera to open, to read text into the card being edited.
+    @State private var scanRequest = false
 
     /// The card a photo is being added to, and a problem reading it.
     @State private var photoTarget: RecipeSection?
@@ -73,6 +75,8 @@ struct RecipeFlowView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .background(SwipeBackEnabler())
+        // The link button above the keyboard opens the source link screen, like Source link in the plus menu.
+        .onAppear { richText.openLink = { showLinkEditor = true } }
         .onChange(of: focus) { old, new in
             if old == .title, new != .title { saveTitle() }
         }
@@ -86,7 +90,7 @@ struct RecipeFlowView: View {
         } message: {
             Text("Start each step with a number, like 1. 2. 3.")
         }
-        .photoTextSource(isChoosing: $choosingPhoto, onPaste: pastePlainText) { outcome in
+        .photoTextSource(isChoosing: $choosingPhoto, scan: $scanRequest, onPaste: pastePlainText) { outcome in
             handlePhoto(fakeText(for: photoTarget) ?? outcome)
         }
         .sheet(isPresented: $showLinkEditor) {
@@ -117,7 +121,12 @@ struct RecipeFlowView: View {
 
             if editing != nil {
                 if !undoStack.isEmpty { UndoButton(action: undo) }
-                MoreButton()
+                ScanButton {
+                    // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
+                    guard let editing else { return }
+                    photoTarget = editing
+                    scanRequest = true
+                }
                 SaveButton { closeKeyboard() }
             }
         }
@@ -677,19 +686,20 @@ private struct UndoButton: View {
     }
 }
 
-/// The three dots, with no plate behind them. Placeholder for now.
-private struct MoreButton: View {
+/// Scan: takes a photo and reads its text into the card being edited, the same as "Take photo" when adding a section.
+private struct ScanButton: View {
+    let action: () -> Void
     var body: some View {
-        Button {} label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 19, weight: .medium))
+        Button(action: action) {
+            Image(systemName: "viewfinder")
+                .font(.system(size: 22, weight: .regular))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("More")
-        .accessibilityIdentifier("moreButton")
+        .accessibilityLabel("Scan text")
+        .accessibilityIdentifier("scanButton")
     }
 }
 

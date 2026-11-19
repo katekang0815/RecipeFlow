@@ -52,6 +52,8 @@ final class RichTextController: ObservableObject {
     @Published var list: ListKind?
     /// Where the cursor goes at the next update, in UTF-16 units.
     var pendingSelection: Int?
+    /// The link button: opens the screen for the recipe's source link.
+    var openLink: (() -> Void)?
 
     func requestSelection(_ location: Int) { pendingSelection = location }
 
@@ -356,7 +358,7 @@ struct EditingKeyboardButtons: View {
             Spacer()
             colorMenu
             Spacer()
-            symbol("link", id: "linkButton", label: "Link")
+            symbol("link", id: "linkButton", label: "Source link") { controller.openLink?() }
             Spacer()
             listMenu
         }
@@ -408,8 +410,8 @@ struct EditingKeyboardButtons: View {
         .accessibilityIdentifier("listButton")
     }
 
-    private func symbol(_ name: String, id: String, label: String) -> some View {
-        Button {} label: {
+    private func symbol(_ name: String, id: String, label: String, action: @escaping () -> Void = {}) -> some View {
+        Button(action: action) {
             Image(systemName: name)
                 .font(.system(size: 20))
                 .foregroundStyle(Theme.ink)

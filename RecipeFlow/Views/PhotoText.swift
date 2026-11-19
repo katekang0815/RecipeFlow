@@ -31,10 +31,11 @@ extension View {
     /// `onPaste` adds "Paste text" above the photo choices, for a section that is typed or pasted.
     func photoTextSource(
         isChoosing: Binding<Bool>,
+        scan: Binding<Bool> = .constant(false),
         onPaste: (() -> Void)? = nil,
         onOutcome: @escaping (PhotoText.Outcome) -> Void
     ) -> some View {
-        photoSource(title: "", isChoosing: isChoosing, onPaste: onPaste) { image in
+        photoSource(title: "", isChoosing: isChoosing, scan: scan, onPaste: onPaste) { image in
             Task {
                 if let image { onOutcome(await PhotoText.read(image)) }
                 else { onOutcome(.problem("Couldn't open that photo.")) }
@@ -48,12 +49,13 @@ extension View {
     func photoSource(
         title: String,
         isChoosing: Binding<Bool>,
+        scan: Binding<Bool> = .constant(false),
         cropsLibraryPhotos: Bool = false,
         onPaste: (() -> Void)? = nil,
         onImage: @escaping (UIImage?) -> Void
     ) -> some View {
         modifier(PhotoSource(
-            title: title, isChoosing: isChoosing, cropsLibraryPhotos: cropsLibraryPhotos, onPaste: onPaste, onImage: onImage
+            title: title, isChoosing: isChoosing, scan: scan, cropsLibraryPhotos: cropsLibraryPhotos, onPaste: onPaste, onImage: onImage
         ))
     }
 }
@@ -61,6 +63,8 @@ extension View {
 private struct PhotoSource: ViewModifier {
     var title: String
     @Binding var isChoosing: Bool
+    /// Set to true to go straight to the camera, as "Take photo" does, without the choices.
+    @Binding var scan: Bool
     var cropsLibraryPhotos = false
     var onPaste: (() -> Void)?
     var onImage: (UIImage?) -> Void
@@ -96,6 +100,12 @@ private struct PhotoSource: ViewModifier {
                         isChoosing = false
                     }
                 )
+            }
+            .onChange(of: scan) { _, requested in
+                guard requested else { return }
+                scan = false
+                // Without a camera (the Simulator) it falls back to the library.
+                (action(for: CameraPicker.isAvailable ? .camera : .library))?()
             }
             .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
             .onChange(of: pickerItem) { _, item in
