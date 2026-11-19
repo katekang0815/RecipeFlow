@@ -28,11 +28,13 @@ enum RecipeSection: String, Identifiable, Hashable {
 /// What a card's text becomes. Ingredients and notes are kept as written, one line each, with no rules.
 /// Only steps are split, at their numbers, see `StepParser`.
 enum SectionText {
-    /// The text's lines, trimmed, without the empty ones.
+    /// The text's lines, trimmed. Empty lines between lines are kept, as the user made them to space the text;
+    /// only the empty lines at the very start and end are dropped.
     static func lines(_ text: String) -> [String] {
-        text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        var lines = text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
+        while lines.first?.isEmpty == true { lines.removeFirst() }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines
     }
 
     static let onlyNumberedSteps = "Only numbered steps are valid"

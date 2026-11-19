@@ -5,8 +5,7 @@
 
 import SwiftUI
 
-/// Add or change a recipe's source link: paste it, or take a photo of it, then Save.
-/// There is no library option; the photo is taken, cropped, and read on the spot.
+/// Add or change a recipe's source link: paste or type it, then Save.
 struct SourceLinkEditor: View {
     /// The saved link when editing, nil when adding.
     let current: String?
@@ -16,9 +15,6 @@ struct SourceLinkEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text: String
     @State private var message: String?
-    @State private var isScanning = false
-    @State private var showCamera = false
-    @State private var showCameraDenied = false
     @FocusState private var isFocused: Bool
 
     init(current: String?, onSave: @escaping (String) -> Void, onRemove: @escaping () -> Void) {
@@ -55,24 +51,6 @@ struct SourceLinkEditor: View {
                 }
                 .padding(16)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-
-                if CameraPicker.isAvailable {
-                    Button {
-                        CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
-                    } label: {
-                        Group {
-                            if isScanning {
-                                ProgressView().tint(Theme.ink)
-                            } else {
-                                Label("Take photo of the link", systemImage: "camera")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(isScanning)
-                    .accessibilityIdentifier("takeLinkPhotoButton")
-                }
 
                 if let message = message ?? invalidMessage {
                     Text(message)
@@ -115,12 +93,6 @@ struct SourceLinkEditor: View {
                 }
             }
             .onChange(of: text) { message = nil }
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraFlow { image in
-                    Task { await readLink(from: image) }
-                }
-            }
-            .cameraDeniedAlert(isPresented: $showCameraDenied)
         }
         .tint(Theme.ink)
         .presentationDetents([.large])
@@ -128,26 +100,6 @@ struct SourceLinkEditor: View {
 
     private var invalidMessage: String? {
         isTyping && link == nil ? "That doesn't look like a web link." : nil
-    }
-
-    /// Reads the cropped photo and puts the first web link found into the field,
-    /// where the user can check it before saving.
-    private func readLink(from image: UIImage) async {
-        isScanning = true
-        message = nil
-        defer { isScanning = false }
-
-        do {
-            let recognized = try await TextRecognizer.recognize(in: image)
-            if let found = SourceLink.firstLink(in: recognized) {
-                text = found.absoluteString
-                message = "Check the link, then tap Save."
-            } else {
-                message = "No link found in the photo. Crop closer to the address and try again."
-            }
-        } catch {
-            message = "Couldn't read that photo."
-        }
     }
 }
 

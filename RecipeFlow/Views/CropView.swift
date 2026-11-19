@@ -11,6 +11,8 @@ struct CropView: View {
     let image: UIImage
     var onDone: (UIImage) -> Void
     var onRetake: () -> Void
+    /// What the button that starts over says: "Retake" for a camera photo.
+    var retakeTitle = "Retake"
 
     /// The crop box as fractions of the image, origin at the top left.
     @State private var rect = CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -26,7 +28,7 @@ struct CropView: View {
 
             HStack(spacing: 12) {
                 Button(action: onRetake) {
-                    Text("Retake").frame(maxWidth: .infinity)
+                    Text(retakeTitle).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(SecondaryButtonStyle())
                 .accessibilityIdentifier("retakeButton")

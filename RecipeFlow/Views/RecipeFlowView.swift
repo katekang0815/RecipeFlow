@@ -13,11 +13,11 @@ struct RecipeFlowView: View {
     var recipe: Recipe
 
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
 
     /// What has the keyboard.
     private enum Field: Hashable {
         case title
-        case section(RecipeSection)
     }
     @FocusState private var focus: Field?
 
@@ -28,8 +28,12 @@ struct RecipeFlowView: View {
     @State private var editing: RecipeSection?
     @State private var draft = ""
     @State private var draftStart = ""
-    /// A card that is waiting for the keyboard, see `requestFocus`.
-    @State private var focusRequest: RecipeSection?
+    /// How parts of the draft look (bold, colour, ...), and how they looked when editing began.
+    @State private var draftRuns: [FormatRun] = []
+    @State private var draftRunsStart: [FormatRun] = []
+    /// The card being edited has the keyboard.
+    @State private var sectionFocused = false
+    @StateObject private var richText = RichTextController()
 
     /// The card a photo is being added to, and a problem reading it.
     @State private var photoTarget: RecipeSection?
@@ -37,14 +41,11 @@ struct RecipeFlowView: View {
     @State private var photoProblem: (section: RecipeSection, text: String)?
 
     @State private var showLinkEditor = false
-    /// The cursor in the card being edited, where the system lets it be set (iOS 18); a `TextSelection`.
-    @State private var selectionBox: Any?
     /// The next change of the draft was made here, not typed.
     @State private var ignoreNextDraftChange = false
-    /// Earlier texts of the card being edited, newest last, for the undo button.
-    @State private var undoStack: [String] = []
-    /// The text the undo stack has seen last, so changes made here (undo, starting to edit) are not recorded.
-    @State private var undoTracked = ""
+    /// Earlier states of the card being edited, newest last, for the undo button.
+    private struct UndoStep { var text: String; var runs: [FormatRun] }
+    @State private var undoStack: [UndoStep] = []
     @State private var lastUndoRecord = Date.distantPast
     /// A photo of steps with no numbered step in it.
     @State private var showOnlyNumbered = false
@@ -55,11 +56,79 @@ struct RecipeFlowView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // The title stays where it is while the sections scroll below it. It is 30 points higher than the
+            // page used to have it, with the sections where they were.
+            titleField
+                .padding(.horizontal, 16)
+                .padding(.top, 22)
+                .padding(.bottom, 26)
+                // Tapping beside the title, outside every section, saves the card being edited.
+                .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeKeyboard() })
+            sectionsScroll
+        }
+        .background(Theme.background.ignoresSafeArea())
+        // The top bar is drawn here, above the page, so the title can sit up beside it without a bar over it.
+        .overlay(alignment: .top) { topBar }
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .background(SwipeBackEnabler())
+        .onChange(of: focus) { old, new in
+            if old == .title, new != .title { saveTitle() }
+        }
+        .onDisappear {
+            saveTitle()
+            finishEditing(discardInvalid: true)
+        }
+        // The alert is below the photo choices, not on the same view, so it can show as they go.
+        .alert(SectionText.onlyNumberedSteps, isPresented: $showOnlyNumbered) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Start each step with a number, like 1. 2. 3.")
+        }
+        .photoTextSource(isChoosing: $choosingPhoto, onPaste: pastePlainText) { outcome in
+            handlePhoto(fakeText(for: photoTarget) ?? outcome)
+        }
+        .sheet(isPresented: $showLinkEditor) {
+            SourceLinkEditor(
+                current: recipe.sourceURL,
+                onSave: { recipe.sourceURL = $0 },
+                onRemove: { recipe.sourceURL = nil }
+            )
+        }
+    }
+
+    /// Back on the left; while a card is edited, undo (once something was typed or pasted), more and save on the right.
+    private var topBar: some View {
+        HStack(spacing: 6) {
+            Button { dismiss() } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(Color.black)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(Color(red: 0.98, green: 0.97, blue: 0.73)))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+            .accessibilityIdentifier("backButton")
+
+            Spacer()
+
+            if editing != nil {
+                if !undoStack.isEmpty { UndoButton(action: undo) }
+                MoreButton()
+                SaveButton { closeKeyboard() }
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+    }
+
+    private var sectionsScroll: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    titleField
-
                     // Only the sections that have something show, always in this order.
                     if shows(.ingredients) {
                         editableSection(.ingredients, "Ingredients") {
@@ -86,73 +155,26 @@ struct RecipeFlowView: View {
                         Text(photoProblem.text)
                             .font(.footnote)
                             .foregroundStyle(Theme.ink.opacity(0.7))
+                            .allowsHitTesting(false)
                     }
                 }
                 // At least a page tall, so the empty part of a short page can be tapped to close the keyboard.
-                .frame(minHeight: UIScreen.main.bounds.height * 0.5, alignment: .top)
-                .background(Color.clear.contentShape(Rectangle()).onTapGesture { focus = nil })
-                .padding(16)
+                .frame(minHeight: UIScreen.main.bounds.height * 0.8, alignment: .top)
+                .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeKeyboard() })
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
             // A short page still drags, so dragging down closes the keyboard.
             .scrollBounceBehavior(.always, axes: .vertical)
-            .onChange(of: draft) { old, new in
-                recordUndo(old: old, new: new)
-                keepCursorInView(proxy, old: old, new: new)
+            .onChange(of: draft) { _, _ in
+                DispatchQueue.main.async { keepCursorInView(proxy) }
             }
             .onChange(of: editing) { _, new in
                 // The cursor starts where it was put, at the end of the text unless a row was tapped.
-                if new != nil { DispatchQueue.main.async { keepCursorInView(proxy, old: nil, new: draft) } }
+                if new != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { keepCursorInView(proxy) } }
             }
-        }
-        .background(Theme.background.ignoresSafeArea())
-        // No title in the top bar: the large title below is enough.
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Theme.background, for: .navigationBar)
-        .toolbar {
-            // While a card is edited: buttons beside the back button and above the keyboard. They are
-            // placeholders for now and do nothing yet.
-            if editing != nil {
-                // Undo only once something was typed or pasted.
-                if !undoStack.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) { UndoButton(action: undo) }
-                }
-                ToolbarItem(placement: .topBarTrailing) { MoreButton() }
-                ToolbarItem(placement: .topBarTrailing) { SaveButton { focus = nil } }
-                ToolbarItem(placement: .keyboard) { EditingKeyboardButtons() }
-            }
-        }
-        .onChange(of: focus) { old, new in
-            if old == .title, new != .title { saveTitle() }
-            if let request = focusRequest {
-                // A card is waiting for the keyboard. The card it replaced can hand focus to nobody
-                // on its way off the screen, so ask again until it lands.
-                if new == .section(request) { focusRequest = nil } else { focus = .section(request) }
-                return
-            }
-            // The keyboard left the card being edited, so save it.
-            if let editing, new != .section(editing) { finishEditing(discardInvalid: false) }
-        }
-        .onDisappear {
-            saveTitle()
-            finishEditing(discardInvalid: true)
-        }
-        // The alert is below the photo choices, not on the same view, so it can show as they go.
-        .alert(SectionText.onlyNumberedSteps, isPresented: $showOnlyNumbered) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Start each step with a number, like 1. 2. 3.")
-        }
-        .photoTextSource(isChoosing: $choosingPhoto) { outcome in
-            handlePhoto(fakeText(for: photoTarget) ?? outcome)
-        }
-        .sheet(isPresented: $showLinkEditor) {
-            SourceLinkEditor(
-                current: recipe.sourceURL,
-                onSave: { recipe.sourceURL = $0 },
-                onRemove: { recipe.sourceURL = nil }
-            )
         }
     }
 
@@ -169,15 +191,17 @@ struct RecipeFlowView: View {
         )
         .font(.system(size: 30, weight: .bold))
         .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity)
+        // Room above and below the letters, so Korean letters with tails are not cut off at the bottom.
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 52)
         .foregroundStyle(Theme.ink)
         .tint(Theme.ink)
         .submitLabel(.done)
         .focused($focus, equals: .title)
         .contentShape(Rectangle())
         .onTapGesture {
-            // An empty field only reacts to taps on its hint text; make the whole row work.
-            if titleDraft.isEmpty { focus = .title }
+            // The room around the letters, and an empty field beside its hint, take taps too.
+            focus = .title
         }
         .accessibilityIdentifier("recipeTitle")
         .onChange(of: titleDraft) { _, new in
@@ -187,6 +211,12 @@ struct RecipeFlowView: View {
                 focus = nil
             }
         }
+    }
+
+    /// Closes whatever has the keyboard. A card being edited is saved as its keyboard goes.
+    private func closeKeyboard() {
+        focus = nil
+        sectionFocused = false
     }
 
     private func saveTitle() {
@@ -201,6 +231,8 @@ struct RecipeFlowView: View {
         Text(title)
             .font(.system(size: 24, weight: .bold))
             .foregroundStyle(Theme.ink)
+            // A tap on a heading goes to the page behind it, which saves the card being edited.
+            .allowsHitTesting(false)
     }
 
     /// A section with no buttons of its own.
@@ -265,6 +297,8 @@ struct RecipeFlowView: View {
                 .frame(maxWidth: .infinity, minHeight: 64)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
+        // Opening the menu counts as a tap outside the card being edited.
+        .simultaneousGesture(TapGesture().onEnded { closeKeyboard() })
         .accessibilityLabel("Add a section")
         .accessibilityIdentifier("addSectionButton")
     }
@@ -280,21 +314,33 @@ struct RecipeFlowView: View {
     /// The card while it is being edited: its text as a field, and what saving it would do.
     private func editor(for section: RecipeSection) -> some View {
         return VStack(alignment: .leading, spacing: 8) {
-            cardTextField(for: section)
-            .lineLimit(1...)
+            RichTextEditor(
+                identifier: "\(section.noun)Editor",
+                text: draft,
+                runs: draftRuns,
+                isFocused: sectionFocused,
+                controller: richText,
+                onEdit: { text, runs in editorChanged(text, runs) },
+                onFocus: { focused in
+                    sectionFocused = focused
+                    // The keyboard left the card being edited, so save it.
+                    if !focused, editing == section { finishEditing(discardInvalid: false) }
+                }
+            )
+            .overlay(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text(section.typingHint)
+                        .foregroundStyle(Theme.ink.opacity(0.45))
+                        .padding(16)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
             .onChange(of: draft) { old, new in
                 if section == .steps { startNextStepOnReturn(old: old, new: new) }
             }
-            .foregroundStyle(Theme.ink)
-            .tint(Theme.ink)
-            .focused($focus, equals: .section(section))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
-            // The padding around the text takes the cursor too, instead of counting as empty page.
-            .contentShape(Rectangle())
-            .onTapGesture { focus = .section(section) }
-            .accessibilityIdentifier("\(section.noun)Editor")
 
             // Only steps are checked: ingredients and notes are saved as written.
             if section == .steps, let status = SectionText.stepsStatus(draft) {
@@ -309,46 +355,12 @@ struct RecipeFlowView: View {
 
     private func editorID(_ section: RecipeSection) -> String { "editor-\(section.rawValue)" }
 
-    @ViewBuilder
-    private func cardTextField(for section: RecipeSection) -> some View {
-        let prompt = Text(section.typingHint).foregroundStyle(Theme.ink.opacity(0.45))
-        if #available(iOS 18, *) {
-            TextField("", text: $draft, selection: selectionBinding, prompt: prompt, axis: .vertical)
-        } else {
-            TextField("", text: $draft, prompt: prompt, axis: .vertical)
-        }
-    }
-
-    @available(iOS 18, *)
-    private var selectionBinding: Binding<TextSelection?> {
-        Binding(get: { selectionBox as? TextSelection }, set: { selectionBox = $0 })
-    }
-
-    /// The cursor's place in `text`, in characters, where the system lets it be read (iOS 18).
-    private func cursorOffset(in text: String) -> Int? {
-        guard #available(iOS 18, *), let selection = selectionBox as? TextSelection,
-              case .selection(let range) = selection.indices,
-              range.lowerBound >= text.startIndex, range.lowerBound <= text.endIndex else { return nil }
-        return text.distance(from: text.startIndex, to: range.lowerBound)
-    }
-
-    /// Scrolls so the line being edited is on screen, instead of always the bottom of the card. The line is
-    /// found by counting line breaks before the cursor, and put where it is in the card, so the card's top
-    /// stays on screen for a line near the top, and its bottom for a line near the bottom.
-    /// Before iOS 18 the cursor cannot be read: the end of the text is followed while typing at the end,
-    /// and typing in the middle is left to the system.
-    private func keepCursorInView(_ proxy: ScrollViewProxy, old: String?, new: String) {
+    /// Scrolls so the line being edited is on screen, instead of always the bottom of the card. The cursor's
+    /// place in the card is put at the same place in the window, so the card's top stays on screen for a line
+    /// near the top, and its bottom for a line near the bottom.
+    private func keepCursorInView(_ proxy: ScrollViewProxy) {
         guard let section = editing else { return }
-        let fraction: CGFloat
-        if let offset = cursorOffset(in: new) {
-            let lines = new.components(separatedBy: "\n")
-            let line = new.prefix(offset).filter { $0 == "\n" }.count
-            fraction = (CGFloat(line) + 0.5) / CGFloat(max(lines.count, 1))
-        } else if old == nil || old.map({ new.hasPrefix($0) || $0.hasPrefix(new) }) == true {
-            fraction = 1
-        } else {
-            return
-        }
+        let fraction = richText.caretFraction() ?? 1
         proxy.scrollTo(editorID(section), anchor: UnitPoint(x: 0.5, y: fraction))
     }
 
@@ -360,35 +372,46 @@ struct RecipeFlowView: View {
         }
         guard editing == .steps, let result = StepEditing.splitAtReturn(old: old, new: new), result.text != new else { return }
         ignoreNextDraftChange = true
+        // The look of the letters stays with them; the cursor goes in front of the new step's text.
+        draftRuns = TextFormat.map(draftRuns, from: new, to: result.text)
         draft = result.text
-        // Before iOS 18 the cursor cannot be placed, so it stays at the end of the text. The cursor is placed
-        // a moment later: the text field sets its own cursor when the line break is typed, which would win.
-        if #available(iOS 18, *) {
-            let text = result.text, caret = result.caret
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                guard editing == .steps, draft == text else { return }
-                selectionBox = TextSelection(insertionPoint: text.index(text.startIndex, offsetBy: min(caret, text.count)))
-            }
-        }
+        richText.requestSelection(String(result.text.prefix(result.caret)).utf16.count)
+    }
+
+    // MARK: Changing the text
+
+    /// The text or its look was changed by typing or by a button. Typing in quick succession is one undo step.
+    private func editorChanged(_ text: String, _ runs: [FormatRun]) {
+        guard text != draft || runs != draftRuns else { return }
+        recordUndoStep(text: draft, runs: draftRuns, becoming: text)
+        draft = text
+        draftRuns = runs
+    }
+
+    /// Changes the text from here, as a photo does. The look of the letters that stay is kept.
+    private func replaceDraft(with text: String, caretAtEnd: Bool = false) {
+        recordUndoStep(text: draft, runs: draftRuns, becoming: text)
+        draftRuns = TextFormat.map(draftRuns, from: draft, to: text)
+        draft = text
+        if caretAtEnd { richText.requestSelection(text.utf16.count) }
     }
 
     // MARK: Undo
 
-    /// Keeps the text from before a change. Typing in quick succession is one step, like a word at a time.
-    private func recordUndo(old: String, new: String) {
-        guard editing != nil, new != undoTracked else { return }
-        undoTracked = new
-        let typingOn = Date().timeIntervalSince(lastUndoRecord) < 1 && abs(new.count - old.count) <= 1
+    private func recordUndoStep(text: String, runs: [FormatRun], becoming new: String) {
+        guard editing != nil else { return }
+        let typingOn = text != new && Date().timeIntervalSince(lastUndoRecord) < 1 && abs(new.count - text.count) <= 1
         lastUndoRecord = Date()
         if typingOn, !undoStack.isEmpty { return }
-        undoStack.append(old)
+        undoStack.append(UndoStep(text: text, runs: runs))
     }
 
     private func undo() {
-        guard let previous = undoStack.popLast() else { return }
-        undoTracked = previous
-        ignoreNextDraftChange = editing == .steps
-        draft = previous
+        guard let step = undoStack.popLast() else { return }
+        // Only the steps card looks at line breaks, and only when the text changes.
+        ignoreNextDraftChange = editing == .steps && step.text != draft
+        draft = step.text
+        draftRuns = step.runs
         lastUndoRecord = .distantPast
     }
 
@@ -402,22 +425,23 @@ struct RecipeFlowView: View {
         }
     }
 
-    /// Starts editing a card. With a `line`, the cursor goes to the end of that line of the card's text (iOS 18);
-    /// otherwise, and before iOS 18, it is at the end of the text.
+    /// Starts editing a card. With a `line`, the cursor goes to the end of that line of the card's text;
+    /// otherwise it is at the end of the text.
     private func beginEditing(_ section: RecipeSection, line: Int? = nil) {
         if editing != section {
             finishEditing(discardInvalid: true)
             editing = section
             draft = currentText(of: section)
             draftStart = draft
+            draftRuns = recipe.formatRuns(for: section, matching: draft)
+            draftRunsStart = draftRuns
             undoStack = []
-            undoTracked = draft
-            if #available(iOS 18, *), let line {
-                let lines = draft.components(separatedBy: "\n")
-                let end = lines.prefix(min(line, lines.count - 1) + 1).reduce(0) { $0 + $1.count + 1 } - 1
-                selectionBox = TextSelection(insertionPoint: draft.index(draft.startIndex, offsetBy: max(0, min(end, draft.count))))
-            } else if #available(iOS 18, *) {
-                selectionBox = nil
+            let lines = draft.components(separatedBy: "\n")
+            if let line {
+                let end = lines.prefix(min(line, lines.count - 1) + 1).reduce(0) { $0 + $1.utf16.count + 1 } - 1
+                richText.requestSelection(max(0, min(end, draft.utf16.count)))
+            } else {
+                richText.requestSelection(draft.utf16.count)
             }
         }
         photoProblem = nil
@@ -425,8 +449,8 @@ struct RecipeFlowView: View {
     }
 
     private func requestFocus(_ section: RecipeSection) {
-        focusRequest = section
-        focus = .section(section)
+        focus = nil
+        sectionFocused = true
     }
 
     /// Saves the card being edited. A blank card empties the section. Ingredients and notes are saved
@@ -437,19 +461,26 @@ struct RecipeFlowView: View {
 
         let isBlank = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let changed = draftStart != draft
+        let restyled = draftRunsStart != draftRuns
 
         if isBlank {
             if changed { apply(draft, to: section) }
+            recipe.setFormat([], text: "", for: section)
         } else if section == .steps, StepParser.parse(draft).isEmpty {
             if !discardInvalid { return }
-        } else if changed {
-            apply(draft, to: section)
+        } else if changed || restyled {
+            if changed { apply(draft, to: section) }
+            // The saved text can differ a little from the typed text (numbers, spaces), so the look is carried over.
+            let saved = currentText(of: section)
+            recipe.setFormat(TextFormat.map(draftRuns, from: draft, to: saved), text: saved, for: section)
         }
         editing = nil
+        sectionFocused = false
         draft = ""
         draftStart = ""
+        draftRuns = []
+        draftRunsStart = []
         undoStack = []
-        undoTracked = ""
     }
 
     private func apply(_ text: String, to section: RecipeSection) {
@@ -458,6 +489,12 @@ struct RecipeFlowView: View {
         case .steps: recipe.replaceSteps(with: StepParser.parse(text), in: context)
         case .notes: recipe.note = SectionText.lines(text).joined(separator: "\n")
         }
+    }
+
+    /// "Paste text": the section opens empty with the keyboard, for the user to paste or type into.
+    private func pastePlainText() {
+        guard let target = photoTarget else { return }
+        beginEditing(target)
     }
 
     /// A photo's text is added after what the card already holds, and shown for the user to check.
@@ -480,10 +517,32 @@ struct RecipeFlowView: View {
             } else {
                 requestFocus(target)
             }
-            draft = target == .steps ? SectionText.appendingSteps(text, to: draft) : SectionText.appending(text, to: draft)
+            replaceDraft(
+                with: target == .steps ? SectionText.appendingSteps(text, to: draft) : SectionText.appending(text, to: draft),
+                caretAtEnd: true
+            )
         case .problem(let message):
             photoProblem = (target, message)
         }
+    }
+
+    // MARK: Formatted text
+
+    /// One line of a saved card, with its bold, slanted, underlined and coloured letters. `prefix` is what the
+    /// card's text has in front of the line's own text (a step's number). A card that was changed after it was
+    /// formatted shows plain.
+    private func formattedText(_ section: RecipeSection, line: Int, prefix: String = "", plain: String) -> Text {
+        // A blank line still takes up a line's height.
+        guard !plain.isEmpty else { return Text(" ") }
+        let full = currentText(of: section)
+        let runs = recipe.formatRuns(for: section, matching: full)
+        guard !runs.isEmpty else { return Text(plain) }
+        let lines = full.components(separatedBy: "\n")
+        guard line < lines.count else { return Text(plain) }
+        let start = lines.prefix(line).reduce(0) { $0 + $1.utf16.count + 1 } + prefix.utf16.count
+        let range = NSRange(location: start, length: plain.utf16.count)
+        let styles = TextFormat.styles(from: runs, count: full.utf16.count)
+        return Text(TextFormat.attributed(full, styles: styles, in: range))
     }
 
     // MARK: Ingredients
@@ -492,7 +551,7 @@ struct RecipeFlowView: View {
     private func ingredients(_ items: [Ingredient]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                Text(Recipe.line(for: item))
+                formattedText(.ingredients, line: index, plain: Recipe.line(for: item))
                     .foregroundStyle(Theme.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -520,7 +579,7 @@ struct RecipeFlowView: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         // A step is one paragraph. Steps saved by an older version also have a detail line.
-                        Text(step.title)
+                        formattedText(.steps, line: index, prefix: "\(index + 1). ", plain: step.title)
                             .foregroundStyle(Theme.ink)
                         if !step.detail.isEmpty {
                             Text(step.detail)
@@ -542,7 +601,7 @@ struct RecipeFlowView: View {
 
     @ViewBuilder
     private func notes(_ text: String) -> some View {
-        Text(text)
+        formattedText(.notes, line: 0, plain: text)
             .foregroundStyle(Theme.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
@@ -598,11 +657,9 @@ struct RecipeFlowView: View {
 
 private enum EditingStyle {
     static let gold = Color(red: 0.89, green: 0.69, blue: 0.22)
-    /// The white rounded bar behind a group of buttons.
-    static let bar = Color.white.opacity(0.85)
 }
 
-/// A round undo button, shown beside the back button once something was typed or pasted.
+/// The undo button, with no plate behind it, shown beside the back button once something was typed or pasted.
 private struct UndoButton: View {
     let action: () -> Void
     var body: some View {
@@ -611,7 +668,6 @@ private struct UndoButton: View {
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
-                .background(Circle().fill(EditingStyle.bar))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Undo")
@@ -619,15 +675,14 @@ private struct UndoButton: View {
     }
 }
 
-/// The three dots in a rounded bar. Placeholder for now.
+/// The three dots, with no plate behind them. Placeholder for now.
 private struct MoreButton: View {
     var body: some View {
         Button {} label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
-                .frame(width: 64, height: 44)
-                .background(Capsule().fill(EditingStyle.bar))
+                .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("More")
@@ -652,52 +707,16 @@ private struct SaveButton: View {
     }
 }
 
-/// Bold, italic, underline, strikethrough, highlight, link and list, evenly spaced above the keyboard.
-private struct EditingKeyboardButtons: View {
-    var body: some View {
-        HStack {
-            Button {} label: {
-                Text("B")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(EditingStyle.gold))
-            }
-            .accessibilityLabel("Bold")
-            .accessibilityIdentifier("boldButton")
-            Spacer()
-            glyph(Text("I").font(.system(size: 22, weight: .regular).italic()), id: "italicButton", label: "Italic")
-            Spacer()
-            glyph(Text("U").font(.system(size: 22)).underline(), id: "underlineButton", label: "Underline")
-            Spacer()
-            glyph(Text("S").font(.system(size: 22)).strikethrough(), id: "strikethroughButton", label: "Strikethrough")
-            Spacer()
-            symbol("highlighter", id: "highlightButton", label: "Highlight")
-            Spacer()
-            symbol("link", id: "linkButton", label: "Link")
-            Spacer()
-            symbol("list.bullet", id: "listButton", label: "List")
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity)
-    }
+/// Keeps the swipe from the left edge going back, which the system turns off when its own top bar is hidden.
+private struct SwipeBackEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController { Controller() }
+    func updateUIViewController(_ controller: UIViewController, context: Context) {}
 
-    private func glyph(_ text: Text, id: String, label: String) -> some View {
-        Button {} label: {
-            text.foregroundStyle(Theme.ink).frame(width: 40, height: 40)
+    private final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            navigationController?.interactivePopGestureRecognizer?.delegate = nil
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         }
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
-    }
-
-    private func symbol(_ name: String, id: String, label: String) -> some View {
-        Button {} label: {
-            Image(systemName: name)
-                .font(.system(size: 20))
-                .foregroundStyle(Theme.ink)
-                .frame(width: 40, height: 40)
-        }
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
     }
 }

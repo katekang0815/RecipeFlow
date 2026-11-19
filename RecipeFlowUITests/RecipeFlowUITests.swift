@@ -58,18 +58,10 @@ final class RecipeFlowUITests: XCTestCase {
         app.descendants(matching: .any)["\(name)Editor"]
     }
 
-    /// Ends editing a card: there is no Done button, so tap the empty page in the gap just above the
-    /// plus (or, when the keyboard covers that, drag the page down).
+    /// Ends editing a card with the check button.
     private func tapDone(_ app: XCUIApplication) {
-        let plus = app.buttons["addSectionButton"]
-        let keyboardTop = app.keyboards.firstMatch.frame.minY
-        let y = plus.frame.minY - 12
-        if plus.exists, plus.frame.maxY < keyboardTop - 10 {
-            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y / app.frame.height)).tap()
-        } else {
-            let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-            from.press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)))
-        }
+        // The check button saves the same way as a tap outside the cards, which has a test of its own.
+        app.buttons["checkButton"].tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
     }
 
@@ -122,6 +114,10 @@ final class RecipeFlowUITests: XCTestCase {
         let library = app.buttons["Choose from library"]
         XCTAssertTrue(library.waitForExistence(timeout: 5))
         library.tap()
+        // A library picture is cropped first, like a camera photo.
+        let use = app.buttons["usePhotoButton"]
+        XCTAssertTrue(use.waitForExistence(timeout: 5), "the crop screen")
+        use.tap()
         XCTAssertTrue(app.buttons["recipeRow"].firstMatch.waitForExistence(timeout: 5))
     }
 
@@ -219,7 +215,7 @@ final class RecipeFlowUITests: XCTestCase {
     @MainActor
     func testARecipeWithJustATitleIsKept() throws {
         let app = launchWithRecipe(title: "Soup")
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
 
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
@@ -235,7 +231,7 @@ final class RecipeFlowUITests: XCTestCase {
         title.tap()
         waitForKeyboard(app)
         title.typeText("Soup")  // no Return, no Done
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
 
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
@@ -262,7 +258,7 @@ final class RecipeFlowUITests: XCTestCase {
         snap(app, "3-filled-recipe")
 
         // Back on the home screen the recipe is listed, and it opens again.
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Tangzhong Bread"))
@@ -486,7 +482,7 @@ final class RecipeFlowUITests: XCTestCase {
         openNewRecipe(app)
         fill(app, "Notes")
         for id in ["undoButton", "moreButton", "checkButton", "boldButton", "italicButton",
-                   "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
+                   "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertFalse(app.buttons[id].exists, "\(id) is only there while editing")
         }
 
@@ -495,8 +491,9 @@ final class RecipeFlowUITests: XCTestCase {
         waitForKeyboard(app)
         XCTAssertFalse(app.buttons["undoButton"].exists, "nothing to undo yet")
         XCTAssertFalse(app.buttons["shareButton"].exists)
+        XCTAssertFalse(app.buttons["strikethroughButton"].exists)
         for id in ["moreButton", "checkButton", "boldButton", "italicButton",
-                   "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
+                   "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id)
         }
         // The first group sits in the top bar, the second just above the keyboard.
@@ -537,6 +534,33 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testTappingOutsideTheCardsSavesTheCardBeingEdited() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough.", "ingredients": "2 eggs"])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        fill(app, "Ingredients")
+
+        // On a heading.
+        app.staticTexts["noteText"].tap()
+        let editor = cardEditor(app, "notes")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        editor.typeText(" Bake.")
+        app.staticTexts["Ingredients"].firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["noteText"].label.contains("Bake."))
+
+        // Beside the title.
+        app.staticTexts["noteText"].tap()
+        XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.2)).tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(cardEditor(app, "notes").exists)
+    }
+
+    @MainActor
     func testStepsAddedAgainContinueTheNumbers() throws {
         let app = launchApp(photoText: ["steps": "1. Mix the flour.\n2. Bake it.\n3. Cool it."])
         openNewRecipe(app)
@@ -549,7 +573,7 @@ final class RecipeFlowUITests: XCTestCase {
         }
         XCTAssertFalse(app.staticTexts["7"].exists)
         XCTAssertEqual(app.staticTexts.matching(identifier: "stepTitle").count, 0)
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         XCTAssertTrue(app.buttons["recipeRow"].firstMatch.label.contains("0 ingredients · 6 steps"))
     }
 
@@ -588,7 +612,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["addSectionButton"].exists, "the plus stays, to add more")
         XCTAssertTrue(app.staticTexts["3 eggs"].exists, "the ingredients are untouched")
 
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("3 ingredients · 2 steps"))
@@ -657,7 +681,7 @@ final class RecipeFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Ingredients"].waitForNonExistence(timeout: 5), "an emptied section goes away")
         XCTAssertTrue(app.buttons["addSectionButton"].exists)
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Pancakes"))
@@ -684,7 +708,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["sectionEditorMessage"].label.contains("Only numbered steps are valid"))
 
         // Leaving the screen drops it, and the saved steps are as they were.
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("0 ingredients · 2 steps"))
@@ -757,7 +781,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), "Return closes the keyboard")
         snap(app, "10-title-edited")
 
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Garlic Toast"))
@@ -784,7 +808,7 @@ final class RecipeFlowUITests: XCTestCase {
         title.typeText("\n")
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertEqual(title.value as? String, "Add Title")
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         XCTAssertTrue(row.label.contains("Untitled recipe"))
@@ -793,37 +817,44 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: Search
 
     @MainActor
-    func testSearchFiltersTheCardsByTitleAndEmptyTextShowsAll() throws {
+    func testSearchListsNamesUntilTypedThenFiltersTheCards() throws {
         let app = launchApp()
         for name in ["Soup", "Bread"] {
             openNewRecipe(app)
             typeTitle(app, name)
-            app.navigationBars.buttons.firstMatch.tap()
+            app.buttons["backButton"].tap()
             XCTAssertTrue(app.buttons["searchButton"].waitForExistence(timeout: 5))
         }
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
         XCTAssertFalse(app.textFields["searchField"].exists, "the field is hidden until the icon is tapped")
 
+        // Open and empty: just the names, with no plus card.
         app.buttons["searchButton"].tap()
         let field = app.textFields["searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         waitForKeyboard(app)
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2, "no input filters nothing")
+        XCTAssertFalse(app.buttons["addRecipeButton"].exists, "a list of names has no plus card")
+
+        // Typing filters the thumbnail cards.
         field.typeText("sou")
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1)
         XCTAssertTrue(app.buttons["recipeRow"].firstMatch.label.contains("Soup"))
+        XCTAssertTrue(app.buttons["addRecipeButton"].exists, "cards again, with the plus card")
         snap(app, "5-search")
 
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
-        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2, "no input filters nothing")
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
+        XCTAssertFalse(app.buttons["addRecipeButton"].exists, "back to the list of names")
 
         field.typeText("zzz")
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 0)
-        XCTAssertTrue(app.buttons["addRecipeButton"].exists)
 
         // Closing the field clears the search.
         app.buttons["searchButton"].tap()
         XCTAssertFalse(field.exists)
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
+        XCTAssertTrue(app.buttons["addRecipeButton"].exists)
     }
 
     // MARK: The source link
@@ -887,7 +918,7 @@ final class RecipeFlowUITests: XCTestCase {
         )
         XCTAssertTrue(app.staticTexts["2 slices bread"].waitForExistence(timeout: 5))
 
-        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["backButton"].tap()
         let row = app.buttons["recipeRow"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
 
@@ -895,5 +926,67 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.buttons["recipeRow"].waitForNonExistence(timeout: 5), "the card is gone")
         XCTAssertTrue(app.buttons["addRecipeButton"].exists)
+    }
+
+    @MainActor
+    func testHoldingACardOffersEditThumbnailInsideTheCard() throws {
+        let app = launchApp()
+        addCard(app)
+        let row = app.buttons["recipeRow"].firstMatch
+        row.press(forDuration: 1)
+
+        let edit = app.buttons["editThumbnailButton"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.frame.contains(edit.frame), "the menu is inside the thumbnail")
+        XCTAssertTrue(row.frame.contains(app.buttons["deleteRecipeButton"].frame))
+        edit.tap()
+
+        XCTAssertTrue(app.staticTexts["Edit thumbnail"].waitForExistence(timeout: 5), "the picture choices are for the thumbnail")
+        app.buttons["Choose from library"].tap()
+        XCTAssertTrue(app.buttons["usePhotoButton"].waitForExistence(timeout: 5), "cropped first")
+        app.buttons["usePhotoButton"].tap()
+        XCTAssertTrue(app.buttons["recipeRow"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1, "it changed the card, not added one")
+        XCTAssertFalse(app.buttons["editThumbnailButton"].exists, "the menu closed")
+    }
+
+    @MainActor
+    func testAFullHomeScreenScrollsToThePlusCard() throws {
+        let app = launchApp()
+        for _ in 0..<7 { addCard(app) }
+        XCTAssertTrue(app.staticTexts["My Recipes"].isHittable)
+
+        let plus = app.buttons["addRecipeButton"]
+        var swipes = 0
+        while !plus.isHittable, swipes < 6 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(plus.isHittable, "the plus card is at the end of the cards")
+        XCTAssertTrue(app.staticTexts["My Recipes"].isHittable, "the title stays in place")
+    }
+
+    @MainActor
+    func testPasteTextOpensAnEmptySectionAboveThePhotoChoices() throws {
+        let app = launchApp()
+        openNewRecipe(app)
+        app.buttons["addSectionButton"].tap()
+        app.buttons["Notes"].tap()
+
+        let paste = app.buttons["Paste text"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Choose from library"].exists)
+        XCTAssertFalse(app.staticTexts["Add a photo"].exists, "no title above the choices")
+        XCTAssertLessThan(paste.frame.minY, app.buttons["Choose from library"].frame.minY, "it is the first choice")
+        sleep(1)  // let the choices finish sliding in
+        paste.tap()
+
+        let editor = cardEditor(app, "notes")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "an empty section to paste into")
+        waitForKeyboard(app)
+        XCTAssertEqual((editor.value as? String) ?? "", "")
+        editor.typeText("Pasted note")
+        app.buttons["checkButton"].tap()
+        XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
     }
 }

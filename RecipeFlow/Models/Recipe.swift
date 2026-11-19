@@ -19,6 +19,8 @@ final class Recipe {
     var sourceURL: String?
     /// The picture on the recipe's card on the home screen, as JPEG data.
     @Attribute(.externalStorage) var thumbnail: Data?
+    /// How parts of the Ingredients, Steps and Notes text look (bold, colour, ...), as JSON. See `Recipe+Formatting`.
+    var formatting: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \Ingredient.recipe)
     var ingredients: [Ingredient] = []
@@ -70,7 +72,7 @@ final class Recipe {
         for step in removed { context.delete(step) }
         renumber(ordered.enumerated().filter { !offsets.contains($0.offset) }.map(\.element))
     }
-
+     
     func moveSteps(from source: IndexSet, to destination: Int) {
         var ordered = sortedSteps
         ordered.move(fromOffsets: source, toOffset: destination)

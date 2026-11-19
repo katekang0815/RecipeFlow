@@ -20,8 +20,8 @@ struct RecipePersistenceTests {
         let recipe = makeRecipe(ingredients: ingredients, in: context)
 
         let items = recipe.sortedIngredients
-        #expect(items.map(\.name) == ["40g bread flour", "200g water", "580g bread flour"])
-        #expect(items.map(\.sortIndex) == [0, 1, 2])
+        #expect(items.map(\.name) == ["40g bread flour", "200g water", "", "580g bread flour"], "the empty line is kept")
+        #expect(items.map(\.sortIndex) == [0, 1, 2, 3])
     }
 
     @Test func savesEachStepAsOneParagraphInOrder() {
@@ -97,7 +97,7 @@ struct RecipePersistenceTests {
         let recipe = try #require(saved.first)
         #expect(saved.count == 1)
         #expect(recipe.title == "Tangzhong Bread")
-        #expect(recipe.sortedIngredients.count == 3)
+        #expect(recipe.sortedIngredients.count == 4)
         #expect(recipe.sortedSteps.count == 3)
         #expect(recipe.note == "Rest overnight.")
         #expect(recipe.sourceURL == "https://www.youtube.com/watch?v=nqsoMyxHTbc")

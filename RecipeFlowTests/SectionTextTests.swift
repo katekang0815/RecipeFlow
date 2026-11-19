@@ -9,9 +9,10 @@ import Testing
 struct SectionTextTests {
     // MARK: Ingredients and notes are kept as written
 
-    @Test func linesAreTrimmedAndTheEmptyOnesLeftOut() {
+    @Test func linesAreTrimmedAndEmptyLinesInBetweenAreKept() {
         #expect(SectionText.lines("  Rest overnight.  \n\n1. Not a step here\n   \nServe warm.")
-                == ["Rest overnight.", "1. Not a step here", "Serve warm."])
+                == ["Rest overnight.", "", "1. Not a step here", "", "Serve warm."])
+        #expect(SectionText.lines("\n\nA\n\n\nB\n \n") == ["A", "", "", "B"])
         #expect(SectionText.lines("  \n \n") == [])
     }
 

@@ -35,7 +35,8 @@ struct RecipeEditingTests {
     @Test func ingredientsBecomeOneLineEach() {
         let c = container()
         let recipe = makeRecipe(ingredients: "40g bread flour\n  200g water \n\nsalt to taste", in: c.mainContext)
-        #expect(recipe.ingredientsText == "40g bread flour\n200g water\nsalt to taste")
+        // Lines are trimmed; the empty line between is kept as the user made it.
+        #expect(recipe.ingredientsText == "40g bread flour\n200g water\n\nsalt to taste")
     }
 
     @Test func olderIngredientsStillReadAsOneLine() {
