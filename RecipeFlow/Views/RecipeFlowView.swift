@@ -41,6 +41,11 @@ struct RecipeFlowView: View {
     @State private var selectionBox: Any?
     /// The next change of the draft was made here, not typed.
     @State private var ignoreNextDraftChange = false
+    /// Earlier texts of the card being edited, newest last, for the undo button.
+    @State private var undoStack: [String] = []
+    /// The text the undo stack has seen last, so changes made here (undo, starting to edit) are not recorded.
+    @State private var undoTracked = ""
+    @State private var lastUndoRecord = Date.distantPast
     /// A photo of steps with no numbered step in it.
     @State private var showOnlyNumbered = false
 
@@ -92,6 +97,7 @@ struct RecipeFlowView: View {
             // A short page still drags, so dragging down closes the keyboard.
             .scrollBounceBehavior(.always, axes: .vertical)
             .onChange(of: draft) { old, new in
+                recordUndo(old: old, new: new)
                 keepCursorInView(proxy, old: old, new: new)
             }
             .onChange(of: editing) { _, new in
@@ -108,7 +114,12 @@ struct RecipeFlowView: View {
             // While a card is edited: buttons beside the back button and above the keyboard. They are
             // placeholders for now and do nothing yet.
             if editing != nil {
-                ToolbarItem(placement: .topBarTrailing) { EditingTopButtons() }
+                // Undo only once something was typed or pasted.
+                if !undoStack.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) { UndoButton(action: undo) }
+                }
+                ToolbarItem(placement: .topBarTrailing) { MoreButton() }
+                ToolbarItem(placement: .topBarTrailing) { SaveButton { focus = nil } }
                 ToolbarItem(placement: .keyboard) { EditingKeyboardButtons() }
             }
         }
@@ -361,6 +372,26 @@ struct RecipeFlowView: View {
         }
     }
 
+    // MARK: Undo
+
+    /// Keeps the text from before a change. Typing in quick succession is one step, like a word at a time.
+    private func recordUndo(old: String, new: String) {
+        guard editing != nil, new != undoTracked else { return }
+        undoTracked = new
+        let typingOn = Date().timeIntervalSince(lastUndoRecord) < 1 && abs(new.count - old.count) <= 1
+        lastUndoRecord = Date()
+        if typingOn, !undoStack.isEmpty { return }
+        undoStack.append(old)
+    }
+
+    private func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        undoTracked = previous
+        ignoreNextDraftChange = editing == .steps
+        draft = previous
+        lastUndoRecord = .distantPast
+    }
+
     // MARK: Editing in place
 
     private func currentText(of section: RecipeSection) -> String {
@@ -379,6 +410,8 @@ struct RecipeFlowView: View {
             editing = section
             draft = currentText(of: section)
             draftStart = draft
+            undoStack = []
+            undoTracked = draft
             if #available(iOS 18, *), let line {
                 let lines = draft.components(separatedBy: "\n")
                 let end = lines.prefix(min(line, lines.count - 1) + 1).reduce(0) { $0 + $1.count + 1 } - 1
@@ -415,6 +448,8 @@ struct RecipeFlowView: View {
         editing = nil
         draft = ""
         draftStart = ""
+        undoStack = []
+        undoTracked = ""
     }
 
     private func apply(_ text: String, to section: RecipeSection) {
@@ -567,39 +602,53 @@ private enum EditingStyle {
     static let bar = Color.white.opacity(0.85)
 }
 
-/// Undo, share and more in one rounded bar, then a round check button, level with the back button.
-private struct EditingTopButtons: View {
+/// A round undo button, shown beside the back button once something was typed or pasted.
+private struct UndoButton: View {
+    let action: () -> Void
     var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 18) {
-                button("arrow.uturn.backward", id: "undoButton", label: "Undo")
-                button("square.and.arrow.up", id: "shareButton", label: "Share")
-                button("ellipsis", id: "moreButton", label: "More")
-            }
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .background(Capsule().fill(EditingStyle.bar))
-
-            Button {} label: {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(EditingStyle.gold))
-            }
-            .accessibilityLabel("Done")
-            .accessibilityIdentifier("checkButton")
-        }
-    }
-
-    private func button(_ symbol: String, id: String, label: String) -> some View {
-        Button {} label: {
-            Image(systemName: symbol)
+        Button(action: action) {
+            Image(systemName: "arrow.uturn.backward")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(EditingStyle.bar))
         }
-        .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Undo")
+        .accessibilityIdentifier("undoButton")
+    }
+}
+
+/// The three dots in a rounded bar. Placeholder for now.
+private struct MoreButton: View {
+    var body: some View {
+        Button {} label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 19, weight: .medium))
+                .foregroundStyle(Theme.ink)
+                .frame(width: 64, height: 44)
+                .background(Capsule().fill(EditingStyle.bar))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("More")
+        .accessibilityIdentifier("moreButton")
+    }
+}
+
+/// The yellow check: saves the card, the same as tapping outside it.
+private struct SaveButton: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(EditingStyle.gold))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Save")
+        .accessibilityIdentifier("checkButton")
     }
 }
 
@@ -629,6 +678,7 @@ private struct EditingKeyboardButtons: View {
             Spacer()
             symbol("list.bullet", id: "listButton", label: "List")
         }
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
     }
 

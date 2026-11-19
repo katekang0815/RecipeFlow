@@ -485,7 +485,7 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchApp(photoText: ["notes": "Rest the dough overnight."])
         openNewRecipe(app)
         fill(app, "Notes")
-        for id in ["undoButton", "shareButton", "moreButton", "checkButton", "boldButton", "italicButton",
+        for id in ["undoButton", "moreButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertFalse(app.buttons[id].exists, "\(id) is only there while editing")
         }
@@ -493,7 +493,9 @@ final class RecipeFlowUITests: XCTestCase {
         app.staticTexts["noteText"].tap()
         XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
         waitForKeyboard(app)
-        for id in ["undoButton", "shareButton", "moreButton", "checkButton", "boldButton", "italicButton",
+        XCTAssertFalse(app.buttons["undoButton"].exists, "nothing to undo yet")
+        XCTAssertFalse(app.buttons["shareButton"].exists)
+        for id in ["moreButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "strikethroughButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id)
         }
@@ -501,6 +503,37 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertLessThan(app.buttons["checkButton"].frame.maxY, app.keyboards.firstMatch.frame.minY / 3)
         XCTAssertLessThanOrEqual(app.buttons["boldButton"].frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
         snap(app, "13-editing-buttons")
+    }
+
+    @MainActor
+    func testUndoShowsAfterTypingAndTheCheckSavesTheCard() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough."])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        app.staticTexts["noteText"].tap()
+        let editor = cardEditor(app, "notes")
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        XCTAssertFalse(app.buttons["undoButton"].exists)
+
+        editor.typeText(" Chill well.")
+        XCTAssertTrue(app.buttons["undoButton"].waitForExistence(timeout: 5))
+        // Each tap undoes a stretch of typing; the button leaves when nothing is left to undo.
+        var taps = 0
+        while app.buttons["undoButton"].exists, taps < 10 {
+            app.buttons["undoButton"].tap()
+            taps += 1
+            _ = app.buttons["undoButton"].waitForNonExistence(timeout: 1)
+        }
+        XCTAssertFalse(app.buttons["undoButton"].exists, "everything is undone")
+        XCTAssertFalse((editor.value as? String ?? "").contains("Chill"), "the typed text is gone")
+
+        editor.typeText(" Bake.")
+        XCTAssertTrue(app.buttons["checkButton"].waitForExistence(timeout: 5))
+        app.buttons["checkButton"].tap()
+        XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["noteText"].label.contains("Bake."), "the check saved the card")
+        XCTAssertFalse(app.buttons["checkButton"].exists)
     }
 
     @MainActor
