@@ -57,12 +57,12 @@ struct RecipeFlowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // The title stays where it is while the sections scroll below it. It is 30 points higher than the
-            // page used to have it, with the sections where they were.
+            // The title stays where it is while the sections scroll below it. It is 16 points higher than the
+            // page used to have it, clear of the buttons above, with the sections where they were.
             titleField
                 .padding(.horizontal, 16)
-                .padding(.top, 22)
-                .padding(.bottom, 26)
+                .padding(.top, 36)
+                .padding(.bottom, 12)
                 // Tapping beside the title, outside every section, saves the card being edited.
                 .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeKeyboard() })
             sectionsScroll
@@ -668,6 +668,8 @@ private struct UndoButton: View {
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
+                // The whole 44-point square takes the tap, not just the lines of the arrow.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Undo")
@@ -683,6 +685,7 @@ private struct MoreButton: View {
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("More")

@@ -517,10 +517,10 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["undoButton"].waitForExistence(timeout: 5))
         // Each tap undoes a stretch of typing; the button leaves when nothing is left to undo.
         var taps = 0
-        while app.buttons["undoButton"].exists, taps < 10 {
-            app.buttons["undoButton"].tap()
+        while app.buttons["undoButton"].waitForExistence(timeout: 1), taps < 40 {
+            let undo = app.buttons["undoButton"]
+            if undo.isHittable { undo.tap() }
             taps += 1
-            _ = app.buttons["undoButton"].waitForNonExistence(timeout: 1)
         }
         XCTAssertFalse(app.buttons["undoButton"].exists, "everything is undone")
         XCTAssertFalse((editor.value as? String ?? "").contains("Chill"), "the typed text is gone")
