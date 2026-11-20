@@ -45,26 +45,40 @@ struct HomeView: View {
                     // A tap beside the buttons closes an open card menu.
                     .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeMenu() })
 
-                    ScrollView {
-                        // With no recipes the plus card is centered on the page instead, see below.
-                        if showsNameList {
-                            // Search open with nothing typed yet: the names of the recipes, stacked, with no thumbnails.
-                            LazyVStack(spacing: 8) {
-                                ForEach(shownRecipes) { recipe in
-                                    nameRow(for: recipe)
-                                }
+                    if showsNameList {
+                        // Search open with nothing typed yet: the names of the recipes, stacked, with no thumbnails.
+                        // A list, so a name can be swiped to the left to show Delete.
+                        List {
+                            ForEach(shownRecipes) { recipe in
+                                nameRow(for: recipe)
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: margin, bottom: 4, trailing: margin))
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            recipe.delete(from: context)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                             }
-                            .padding(.horizontal, margin)
-                        } else if !recipes.isEmpty {
-                            LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
-                                ForEach(shownRecipes) { recipe in
-                                    card(for: recipe).frame(height: side)
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                    } else {
+                        ScrollView {
+                            // With no recipes the plus card is centered on the page instead, see below.
+                            if !recipes.isEmpty {
+                                LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
+                                    ForEach(shownRecipes) { recipe in
+                                        card(for: recipe).frame(height: side)
+                                    }
+                                    addCard.frame(height: side)
                                 }
-                                addCard.frame(height: side)
+                                .padding(.horizontal, margin)
+                                // The gaps between the cards close an open card menu.
+                                .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeMenu() })
                             }
-                            .padding(.horizontal, margin)
-                            // The gaps between the cards close an open card menu.
-                            .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeMenu() })
                         }
                     }
                 }

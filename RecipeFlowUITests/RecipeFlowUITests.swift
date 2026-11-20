@@ -1021,4 +1021,29 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.textFields["sourceLinkField"].waitForExistence(timeout: 5), "the add source link screen")
         XCTAssertTrue(app.buttons["saveSourceLinkButton"].exists)
     }
+
+    @MainActor
+    func testSwipingANameInTheSearchListLeftShowsDelete() throws {
+        let app = launchApp()
+        for name in ["Soup", "Bread"] {
+            openNewRecipe(app)
+            typeTitle(app, name)
+            app.buttons["backButton"].tap()
+            XCTAssertTrue(app.buttons["searchButton"].waitForExistence(timeout: 5))
+        }
+        app.buttons["searchButton"].tap()
+        XCTAssertTrue(app.textFields["searchField"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
+
+        let soup = app.buttons.matching(identifier: "recipeRow").matching(NSPredicate(format: "label CONTAINS 'Soup'")).firstMatch
+        XCTAssertTrue(soup.waitForExistence(timeout: 5))
+        soup.swipeLeft()
+        let delete = app.buttons["Delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "swiping left shows Delete")
+        delete.tap()
+
+        XCTAssertTrue(soup.waitForNonExistence(timeout: 5), "the recipe is gone")
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1)
+        XCTAssertTrue(app.buttons.matching(identifier: "recipeRow").firstMatch.label.contains("Bread"))
+    }
 }
