@@ -92,6 +92,22 @@ struct HomeView: View {
                     }
                 }
             }
+            // The card menu sits above the whole screen. A tap anywhere else on the screen closes it.
+            .overlayPreferenceValue(MenuCardKey.self) { anchor in
+                if let anchor, let recipe = menuRecipe {
+                    GeometryReader { screen in
+                        let card = screen[anchor]
+                        ZStack(alignment: .topLeading) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { closeMenu() }
+                            cardMenu(for: recipe)
+                                .frame(width: min(card.width - 16, 190))
+                                .position(x: card.maxX - min(card.width - 16, 190) / 2 - 8, y: card.maxY - 53)
+                        }
+                    }
+                }
+            }
             .background(Theme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Recipe.self) { recipe in
@@ -209,9 +225,8 @@ struct HomeView: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(recipe.displayTitle + ", " + summary(of: recipe))
             .accessibilityIdentifier("recipeRow")
-        .overlay(alignment: .bottomTrailing) {
-            if menuRecipe === recipe { cardMenu(for: recipe) }
-        }
+            // Tells the screen where the card with the open menu is, so the menu can be drawn above everything.
+            .anchorPreference(key: MenuCardKey.self, value: .bounds) { menuRecipe === recipe ? $0 : nil }
     }
 
     private func closeMenu() { menuRecipe = nil }
@@ -249,7 +264,6 @@ struct HomeView: View {
             }
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .padding(8)
     }
 
     private func menuRow(_ title: String, systemImage: String, color: Color, id: String, action: @escaping () -> Void) -> some View {
@@ -308,6 +322,14 @@ private struct RecipeCard: View {
 #Preview("With recipes") {
     HomeView()
         .modelContainer(PersistenceController.previewContainer(withSample: true))
+}
+
+/// Where the card with the open menu is on the screen.
+private struct MenuCardKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>?
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = value ?? nextValue()
+    }
 }
 
 /// Catches a tap and a hold on a card. The tap waits to see whether the touch becomes a hold, so a hold is

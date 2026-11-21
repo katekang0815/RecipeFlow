@@ -1046,4 +1046,32 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1)
         XCTAssertTrue(app.buttons.matching(identifier: "recipeRow").firstMatch.label.contains("Bread"))
     }
+
+    @MainActor
+    func testTappingElsewhereClosesTheCardMenuWithoutDoingAnything() throws {
+        let app = launchApp()
+        addCard(app)
+        let row = app.buttons["recipeRow"].firstMatch
+
+        // On the page below the card.
+        row.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForNonExistence(timeout: 5), "closed by a tap below")
+        XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1, "nothing was deleted")
+        XCTAssertFalse(app.staticTexts["Add a thumbnail"].exists)
+
+        // On the title.
+        row.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForExistence(timeout: 5))
+        app.staticTexts["My Recipes"].tap()
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForNonExistence(timeout: 5), "closed by a tap on the title")
+
+        // On the card itself: it only closes the menu, and the recipe does not open.
+        row.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForExistence(timeout: 5))
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
+        XCTAssertTrue(app.buttons["editThumbnailButton"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["My Recipes"].exists, "still on the home screen")
+    }
 }
