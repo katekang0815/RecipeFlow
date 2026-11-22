@@ -199,10 +199,10 @@ struct RecipeFlowView: View {
             axis: .vertical
         )
         .font(.system(size: 30, weight: .bold))
-        .multilineTextAlignment(.center)
+        .multilineTextAlignment(.leading)
         // Room above and below the letters, so Korean letters with tails are not cut off at the bottom.
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 52)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         .foregroundStyle(Theme.ink)
         .tint(Theme.ink)
         .submitLabel(.done)
