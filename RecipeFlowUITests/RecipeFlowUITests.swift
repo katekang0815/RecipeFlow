@@ -540,13 +540,13 @@ final class RecipeFlowUITests: XCTestCase {
         fill(app, "Notes")
         fill(app, "Ingredients")
 
-        // On a heading.
+        // On the heading of the card being edited.
         app.staticTexts["noteText"].tap()
         let editor = cardEditor(app, "notes")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         waitForKeyboard(app)
         editor.typeText(" Bake.")
-        app.staticTexts["Ingredients"].firstMatch.tap()
+        app.staticTexts["Notes"].firstMatch.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["noteText"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["noteText"].label.contains("Bake."))
@@ -555,7 +555,9 @@ final class RecipeFlowUITests: XCTestCase {
         app.staticTexts["noteText"].tap()
         XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
         waitForKeyboard(app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.03, dy: 0.2)).tap()
+        // Left of the title's field, in the page margin.
+        let title = titleField(app)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 8 / app.frame.width, dy: title.frame.midY / app.frame.height)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
         XCTAssertFalse(cardEditor(app, "notes").exists)
     }

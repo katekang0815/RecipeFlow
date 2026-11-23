@@ -59,12 +59,12 @@ struct RecipeFlowView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // The title stays where it is while the sections scroll below it. It is 16 points higher than the
+            // The title stays where it is while the sections scroll below it. It is 6 points higher than the
             // page used to have it, clear of the buttons above, with the sections where they were.
             titleField
                 .padding(.horizontal, 16)
-                .padding(.top, 36)
-                .padding(.bottom, 12)
+                .padding(.top, 46)
+                .padding(.bottom, 2)
                 // Tapping beside the title, outside every section, saves the card being edited.
                 .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeKeyboard() })
             sectionsScroll
@@ -199,10 +199,10 @@ struct RecipeFlowView: View {
             axis: .vertical
         )
         .font(.system(size: 30, weight: .bold))
-        .multilineTextAlignment(.leading)
+        .multilineTextAlignment(.center)
         // Room above and below the letters, so Korean letters with tails are not cut off at the bottom.
         .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 52)
         .foregroundStyle(Theme.ink)
         .tint(Theme.ink)
         .submitLabel(.done)
