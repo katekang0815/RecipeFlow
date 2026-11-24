@@ -121,12 +121,15 @@ struct RecipeFlowView: View {
 
             if editing != nil {
                 if !undoStack.isEmpty { UndoButton(action: undo) }
-                ScanButton {
-                    // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
-                    guard let editing else { return }
-                    photoTarget = editing
-                    scanRequest = true
-                }
+                MoreMenu(
+                    scan: {
+                        // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
+                        guard let editing else { return }
+                        photoTarget = editing
+                        scanRequest = true
+                    },
+                    delete: deleteSection
+                )
                 SaveButton { closeKeyboard() }
             }
         }
@@ -500,6 +503,26 @@ struct RecipeFlowView: View {
         }
     }
 
+    /// Deletes the whole section being edited: its text and its look, and the section goes from the page.
+    private func deleteSection() {
+        guard let section = editing else { return }
+        switch section {
+        case .ingredients: recipe.replaceIngredients(withLines: [], in: context)
+        case .steps: recipe.replaceSteps(with: [], in: context)
+        case .notes: recipe.note = ""
+        }
+        recipe.setFormat([], text: "", for: section)
+        editing = nil
+        sectionFocused = false
+        draft = ""
+        draftStart = ""
+        draftRuns = []
+        draftRunsStart = []
+        undoStack = []
+        photoProblem = nil
+        focus = nil
+    }
+
     /// "Paste text": the section opens empty with the keyboard, for the user to paste or type into.
     private func pastePlainText() {
         guard let target = photoTarget else { return }
@@ -686,20 +709,29 @@ private struct UndoButton: View {
     }
 }
 
-/// Scan: takes a photo and reads its text into the card being edited, the same as "Take photo" when adding a section.
-private struct ScanButton: View {
-    let action: () -> Void
+/// The three dots: a menu with Scan text (a photo read into the card being edited, the same as "Take photo" when
+/// adding a section) and Delete section.
+private struct MoreMenu: View {
+    let scan: () -> Void
+    let delete: () -> Void
+
     var body: some View {
-        Button(action: action) {
-            Image(systemName: "viewfinder")
-                .font(.system(size: 22, weight: .regular))
+        Menu {
+            Button(action: scan) {
+                Label("Scan text", systemImage: "camera")
+            }
+            Button(role: .destructive, action: delete) {
+                Label("Delete section", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Scan text")
-        .accessibilityIdentifier("scanButton")
+        .accessibilityLabel("More")
+        .accessibilityIdentifier("moreButton")
     }
 }
 

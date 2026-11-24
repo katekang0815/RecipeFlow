@@ -481,7 +481,7 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchApp(photoText: ["notes": "Rest the dough overnight."])
         openNewRecipe(app)
         fill(app, "Notes")
-        for id in ["undoButton", "scanButton", "checkButton", "boldButton", "italicButton",
+        for id in ["undoButton", "moreButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertFalse(app.buttons[id].exists, "\(id) is only there while editing")
         }
@@ -492,7 +492,7 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(app.buttons["undoButton"].exists, "nothing to undo yet")
         XCTAssertFalse(app.buttons["shareButton"].exists)
         XCTAssertFalse(app.buttons["strikethroughButton"].exists)
-        for id in ["scanButton", "checkButton", "boldButton", "italicButton",
+        for id in ["moreButton", "checkButton", "boldButton", "italicButton",
                    "underlineButton", "highlightButton", "linkButton", "listButton"] {
             XCTAssertTrue(app.buttons[id].waitForExistence(timeout: 5), id)
         }
@@ -993,7 +993,7 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testTheScanButtonReadsAPhotoIntoTheCardBeingEdited() throws {
+    func testScanTextInTheMoreMenuReadsAPhotoIntoTheCardBeingEdited() throws {
         let app = launchApp(photoText: ["notes": "Rest the dough."])
         openNewRecipe(app)
         fill(app, "Notes")
@@ -1001,10 +1001,10 @@ final class RecipeFlowUITests: XCTestCase {
         let editor = cardEditor(app, "notes")
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         waitForKeyboard(app)
-        XCTAssertFalse(app.buttons["moreButton"].exists, "the three dots are gone")
-
-        // The Simulator has no camera, so the scan button reads a library picture.
-        app.buttons["scanButton"].tap()
+        // The Simulator has no camera, so scanning reads a library picture.
+        app.buttons["moreButton"].tap()
+        XCTAssertTrue(app.buttons["Scan text"].waitForExistence(timeout: 5))
+        app.buttons["Scan text"].tap()
         let added = NSPredicate { _, _ in (self.cardEditor(app, "notes").value as? String)?.contains("Rest the dough.\nRest the dough.") == true }
         let expectation = XCTNSPredicateExpectation(predicate: added, object: nil)
         XCTAssertEqual(XCTWaiter().wait(for: [expectation], timeout: 10), .completed, "the photo's text was added after the note")
@@ -1075,5 +1075,26 @@ final class RecipeFlowUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3)).tap()
         XCTAssertTrue(app.buttons["editThumbnailButton"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["My Recipes"].exists, "still on the home screen")
+    }
+
+    @MainActor
+    func testDeleteSectionInTheMoreMenuRemovesTheWholeSection() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough.", "ingredients": "2 eggs"])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        fill(app, "Ingredients")
+        app.staticTexts["noteText"].tap()
+        XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+
+        app.buttons["moreButton"].tap()
+        XCTAssertTrue(app.buttons["Delete section"].waitForExistence(timeout: 5))
+        app.buttons["Delete section"].tap()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Notes"].exists, "the Notes section is gone")
+        XCTAssertFalse(app.staticTexts["noteText"].exists)
+        XCTAssertTrue(app.staticTexts["2 eggs"].exists, "the other section stays")
+        XCTAssertTrue(app.buttons["addSectionButton"].exists)
     }
 }
