@@ -1097,4 +1097,23 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 eggs"].exists, "the other section stays")
         XCTAssertTrue(app.buttons["addSectionButton"].exists)
     }
+
+    @MainActor
+    func testTheDotsMenuClosesWithATapElsewhereAndHasEvenSides() throws {
+        let app = launchApp(photoText: ["notes": "Rest the dough."])
+        openNewRecipe(app)
+        fill(app, "Notes")
+        app.staticTexts["noteText"].tap()
+        XCTAssertTrue(cardEditor(app, "notes").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+
+        app.buttons["moreButton"].tap()
+        let delete = app.buttons["Delete section"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        snap(app, "14-dots-menu")
+
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.45)).tap()
+        XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "a tap elsewhere closes the menu")
+        XCTAssertTrue(cardEditor(app, "notes").exists, "and the card is still being edited")
+    }
 }

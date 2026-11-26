@@ -49,6 +49,8 @@ struct RecipeFlowView: View {
     private struct UndoStep { var text: String; var runs: [FormatRun] }
     @State private var undoStack: [UndoStep] = []
     @State private var lastUndoRecord = Date.distantPast
+    /// The menu under the three dots is open.
+    @State private var showMoreMenu = false
     /// A photo of steps with no numbered step in it.
     @State private var showOnlyNumbered = false
 
@@ -72,6 +74,11 @@ struct RecipeFlowView: View {
         .background(Theme.background.ignoresSafeArea())
         // The top bar is drawn here, above the page, so the title can sit up beside it without a bar over it.
         .overlay(alignment: .top) { topBar }
+        // The dots menu is drawn here, as wide as its words need. A tap anywhere else closes it.
+        .overlay {
+            if showMoreMenu, editing != nil { moreMenu }
+        }
+        .onChange(of: editing) { showMoreMenu = false }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .background(SwipeBackEnabler())
@@ -120,21 +127,42 @@ struct RecipeFlowView: View {
             Spacer()
 
             if editing != nil {
-                if !undoStack.isEmpty { UndoButton(action: undo) }
-                MoreMenu(
-                    scan: {
-                        // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
-                        guard let editing else { return }
-                        photoTarget = editing
-                        scanRequest = true
-                    },
-                    delete: deleteSection
-                )
+                // Placed so the dots look centred between the undo arrow and the check circle: the circle fills its
+                // square, but the arrow and the dots leave room around them in theirs.
+                HStack(spacing: 0) {
+                    if !undoStack.isEmpty { UndoButton(action: undo) }
+                    MoreButton { showMoreMenu.toggle() }
+                }
+                .padding(.trailing, 6)
                 SaveButton { closeKeyboard() }
             }
         }
         .padding(.horizontal, 16)
         .frame(height: 44)
+    }
+
+    private var moreMenu: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { showMoreMenu = false }
+            MorePanel(
+                scan: {
+                    showMoreMenu = false
+                    // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
+                    guard let editing else { return }
+                    photoTarget = editing
+                    scanRequest = true
+                },
+                delete: {
+                    showMoreMenu = false
+                    deleteSection()
+                }
+            )
+            // Under the top bar, ending where the dots button ends.
+            .padding(.top, 50)
+            .padding(.trailing, 72)
+        }
     }
 
     private var sectionsScroll: some View {
@@ -709,29 +737,61 @@ private struct UndoButton: View {
     }
 }
 
-/// The three dots: a menu with Scan text (a photo read into the card being edited, the same as "Take photo" when
-/// adding a section) and Delete section.
-private struct MoreMenu: View {
-    let scan: () -> Void
-    let delete: () -> Void
+/// The three dots, which open the menu.
+private struct MoreButton: View {
+    let action: () -> Void
 
     var body: some View {
-        Menu {
-            Button(action: scan) {
-                Label("Scan text", systemImage: "camera")
-            }
-            Button(role: .destructive, action: delete) {
-                Label("Delete section", systemImage: "trash")
-            }
-        } label: {
+        Button(action: action) {
             Image(systemName: "ellipsis")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("More")
         .accessibilityIdentifier("moreButton")
+    }
+}
+
+/// Scan text (a photo read into the card being edited, the same as "Take photo" when adding a section) and
+/// Delete section. The panel is only as wide as its longest row, with the same room on the left and the right.
+/// (The system's own menu has a fixed width, which leaves a wide empty space on the right.)
+private struct MorePanel: View {
+    let scan: () -> Void
+    let delete: () -> Void
+
+    private let sideRoom: CGFloat = 20
+
+    var body: some View {
+        VStack(spacing: 0) {
+            row("Scan text", icon: "viewfinder", color: .primary, action: scan)
+            Divider().padding(.horizontal, sideRoom)
+            row("Delete section", icon: "trash", color: .red, action: delete)
+        }
+        .fixedSize()
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.15), radius: 18, y: 8)
+    }
+
+    private func row(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 19))
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 17))
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, sideRoom)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
