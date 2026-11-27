@@ -1122,7 +1122,7 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testTheDotsMenuClosesWithATapElsewhereAndHasEvenSides() throws {
+    func testCancellingTheDotsSheetKeepsTheCardInEditMode() throws {
         let app = launchApp(photoText: ["notes": "Rest the dough."])
         openNewRecipe(app)
         fill(app, "Notes")
@@ -1133,10 +1133,15 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["moreButton"].tap()
         let delete = app.buttons["Delete section"]
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
-        snap(app, "14-dots-menu")
+        XCTAssertTrue(app.buttons["Scan text"].exists)
+        sleep(1)
+        snap(app, "14-dots-sheet")
 
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.45)).tap()
-        XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "a tap elsewhere closes the menu")
-        XCTAssertTrue(cardEditor(app, "notes").exists, "and the card is still being edited")
+        app.buttons["cancelChoicesButton"].tap()
+        XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "Cancel puts the sheet away")
+        XCTAssertTrue(cardEditor(app, "notes").exists, "the card is still being edited")
+        waitForKeyboard(app)
+        cardEditor(app, "notes").typeText(" Overnight.")
+        XCTAssertTrue((cardEditor(app, "notes").value as? String)?.contains("Overnight.") == true, "the keyboard is back")
     }
 }

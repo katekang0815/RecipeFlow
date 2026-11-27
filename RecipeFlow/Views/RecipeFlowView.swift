@@ -54,6 +54,7 @@ struct RecipeFlowView: View {
     @State private var lastUndoRecord = Date.distantPast
     /// The menu under the three dots is open.
     @State private var showMoreMenu = false
+    @State private var chosenMoreAction: MoreAction?
     /// A photo of steps with no numbered step in it.
     @State private var showOnlyNumbered = false
 
@@ -76,12 +77,10 @@ struct RecipeFlowView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         // The top bar is drawn here, above the page, so the title can sit up beside it without a bar over it.
-        .overlay(alignment: .top) { topBar }
-        // The dots menu is drawn here, as wide as its words need. A tap anywhere else closes it.
-        .overlay {
-            if showMoreMenu, editing != nil { moreMenu }
+        .overlay(alignment: .top) {
+            // The dots' sheet is gone before what was chosen is done, as the camera is shown over this screen.
+            topBar.sheet(isPresented: $showMoreMenu, onDismiss: doChosenMoreAction) { moreSheet }
         }
-        .onChange(of: editing) { showMoreMenu = false }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .background(SwipeBackEnabler())
@@ -134,7 +133,11 @@ struct RecipeFlowView: View {
                 // square, but the arrow and the dots leave room around them in theirs.
                 HStack(spacing: 0) {
                     if !undoStack.isEmpty { UndoButton(action: undo) }
-                    MoreButton { showMoreMenu.toggle() }
+                    MoreButton {
+                        showMoreMenu = true
+                        // The keyboard goes while the sheet is up. The card stays in edit mode.
+                        sectionFocused = false
+                    }
                 }
                 .padding(.trailing, 6)
                 SaveButton { closeKeyboard() }
@@ -144,27 +147,35 @@ struct RecipeFlowView: View {
         .frame(height: 44)
     }
 
-    private var moreMenu: some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { showMoreMenu = false }
-            MorePanel(
-                scan: {
-                    showMoreMenu = false
-                    // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
-                    guard let editing else { return }
-                    photoTarget = editing
-                    scanRequest = true
-                },
-                delete: {
-                    showMoreMenu = false
-                    deleteSection()
-                }
-            )
-            // Under the top bar, ending where the dots button ends.
-            .padding(.top, 50)
-            .padding(.trailing, 72)
+    private var moreSheet: some View {
+        ChoiceSheet<MoreAction>(
+            title: "Edit section",
+            rows: [
+                .init(text: "Scan text", icon: "viewfinder", value: .scan),
+                .init(text: "Delete section", icon: "trash", value: .delete, color: .red),
+            ],
+            choose: { action in
+                chosenMoreAction = action
+                showMoreMenu = false
+            },
+            cancel: { showMoreMenu = false }
+        )
+    }
+
+    private func doChosenMoreAction() {
+        let action = chosenMoreAction
+        chosenMoreAction = nil
+        guard let editing else { return }
+        switch action {
+        case .scan:
+            // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
+            photoTarget = editing
+            scanRequest = true
+        case .delete:
+            deleteSection()
+        case nil:
+            // Cancelled or swiped away: the keyboard comes back.
+            requestFocus(editing)
         }
     }
 
@@ -325,6 +336,11 @@ struct RecipeFlowView: View {
         recipe.sourceURL.flatMap(SourceLink.url(from:)) != nil
     }
 
+    /// What the dots offer for the card being edited.
+    private enum MoreAction: Hashable {
+        case scan, delete
+    }
+
     /// What the plus can add.
     private enum NewSection: Hashable {
         case text(RecipeSection)
@@ -398,7 +414,7 @@ struct RecipeFlowView: View {
                 onFocus: { focused in
                     sectionFocused = focused
                     // The keyboard left the card being edited, so save it.
-                    if !focused, editing == section { finishEditing(discardInvalid: false) }
+                    if !focused, editing == section, !showMoreMenu { finishEditing(discardInvalid: false) }
                 }
             )
             .overlay(alignment: .topLeading) {
@@ -786,46 +802,6 @@ private struct MoreButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel("More")
         .accessibilityIdentifier("moreButton")
-    }
-}
-
-/// Scan text (a photo read into the card being edited, the same as "Take photo" when adding a section) and
-/// Delete section. The panel is only as wide as its longest row, with the same room on the left and the right.
-/// (The system's own menu has a fixed width, which leaves a wide empty space on the right.)
-private struct MorePanel: View {
-    let scan: () -> Void
-    let delete: () -> Void
-
-    private let sideRoom: CGFloat = 20
-
-    var body: some View {
-        VStack(spacing: 0) {
-            row("Scan text", icon: "viewfinder", color: .primary, action: scan)
-            Divider().padding(.horizontal, sideRoom)
-            row("Delete section", icon: "trash", color: .red, action: delete)
-        }
-        .fixedSize()
-        .padding(.vertical, 6)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.15), radius: 18, y: 8)
-    }
-
-    private func row(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 19))
-                    .frame(width: 24)
-                Text(title)
-                    .font(.system(size: 17))
-            }
-            .foregroundStyle(color)
-            .padding(.horizontal, sideRoom)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 48)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 }
 

@@ -204,6 +204,7 @@ struct ChoiceSheet<Value: Hashable>: View {
         let text: String
         let icon: String
         let value: Value
+        var color: Color = Theme.ink
     }
 
     let title: String
@@ -243,7 +244,7 @@ struct ChoiceSheet<Value: Hashable>: View {
                     .font(.system(size: 17))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(Theme.ink)
+            .foregroundStyle(row.color)
             .padding(.horizontal, 16)
             .frame(height: 52)
             .background(RoundedRectangle(cornerRadius: 14).fill(Theme.field))
