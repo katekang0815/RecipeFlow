@@ -40,6 +40,9 @@ struct RecipeFlowView: View {
     /// The card a photo is being added to, and a problem reading it.
     @State private var photoTarget: RecipeSection?
     @State private var choosingPhoto = false
+    /// The plus's sheet of sections, and what was chosen in it, done once the sheet has gone.
+    @State private var choosingSection = false
+    @State private var chosenSection: NewSection?
     @State private var photoProblem: (section: RecipeSection, text: String)?
 
     @State private var showLinkEditor = false
@@ -189,8 +192,11 @@ struct RecipeFlowView: View {
                         plainSection("Source link") { sourceLink }
                     }
 
-                    // The one add button stays below the last section.
-                    addSectionMenu
+                    // The one add button stays below the last section. It is away while the keyboard is up, so
+                    // Scan text is then the way to add a photo's text.
+                    if editing == nil, focus == nil {
+                        addSectionButton
+                    }
                     if let photoProblem {
                         Text(photoProblem.text)
                             .font(.footnote)
@@ -319,28 +325,56 @@ struct RecipeFlowView: View {
         recipe.sourceURL.flatMap(SourceLink.url(from:)) != nil
     }
 
-    /// The only add button: a plus that drops down the four sections. Choosing one asks for a photo
+    /// What the plus can add.
+    private enum NewSection: Hashable {
+        case text(RecipeSection)
+        case sourceLink
+    }
+
+    /// The only add button: a plus that pulls up the four sections. Choosing one asks for a photo
     /// (or, for the source link, opens its editor); the section then appears in its place above the plus.
-    private var addSectionMenu: some View {
-        Menu {
-            ForEach([RecipeSection.ingredients, .steps, .notes], id: \.self) { section in
-                Button(section.noun.capitalized) {
-                    photoTarget = section
-                    choosingPhoto = true
-                }
-            }
-            Button("Source link") { showLinkEditor = true }
-        } label: {
+    private var addSectionButton: some View {
+        Button { choosingSection = true } label: {
             Image(systemName: "plus")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity, minHeight: 64)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
-        // Opening the menu counts as a tap outside the card being edited.
-        .simultaneousGesture(TapGesture().onEnded { closeKeyboard() })
+        .buttonStyle(.plain)
         .accessibilityLabel("Add a section")
         .accessibilityIdentifier("addSectionButton")
+        // The next screen is shown over this one, so it waits until this sheet has gone.
+        .sheet(isPresented: $choosingSection, onDismiss: addChosenSection) {
+            ChoiceSheet<NewSection>(
+                title: "Add a section",
+                rows: [
+                    .init(text: "Ingredients", icon: "carrot", value: .text(.ingredients)),
+                    .init(text: "Steps", icon: "list.number", value: .text(.steps)),
+                    .init(text: "Notes", icon: "note.text", value: .text(.notes)),
+                    .init(text: "Source link", icon: "link", value: .sourceLink),
+                ],
+                choose: { choice in
+                    chosenSection = choice
+                    choosingSection = false
+                },
+                cancel: { choosingSection = false }
+            )
+        }
+    }
+
+    private func addChosenSection() {
+        let choice = chosenSection
+        chosenSection = nil
+        switch choice {
+        case .text(let section):
+            photoTarget = section
+            choosingPhoto = true
+        case .sourceLink:
+            showLinkEditor = true
+        case nil:
+            break
+        }
     }
 
     /// For UI tests: the text a photo of this section "contains", from the launch arguments.

@@ -287,7 +287,30 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: The plus
 
     @MainActor
-    func testThePlusDropsDownTheFourSections() throws {
+    func testThePlusIsHiddenWhileTheKeyboardIsUp() throws {
+        let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
+        let plus = app.buttons["addSectionButton"]
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+
+        // A section being edited.
+        app.staticTexts["3 eggs"].tap()
+        XCTAssertTrue(cardEditor(app, "ingredients").waitForExistence(timeout: 5))
+        waitForKeyboard(app)
+        XCTAssertTrue(plus.waitForNonExistence(timeout: 5))
+        snap(app, "15-no-plus-while-typing")
+        tapDone(app)
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+
+        // The title being edited.
+        app.descendants(matching: .any)["recipeTitle"].firstMatch.tap()
+        waitForKeyboard(app)
+        XCTAssertTrue(plus.waitForNonExistence(timeout: 5))
+        app.typeText("\n")
+        XCTAssertTrue(plus.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testThePlusPullsUpTheFourSections() throws {
         let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         app.buttons["addSectionButton"].tap()
         for option in ["Ingredients", "Steps", "Notes", "Source link"] {
@@ -298,6 +321,9 @@ final class RecipeFlowUITests: XCTestCase {
         for old in ["addIngredientsPhotoButton", "addStepsPhotoButton", "addNotesPhotoButton", "addSourceLinkButton"] {
             XCTAssertFalse(app.buttons[old].exists, old)
         }
+        app.buttons["cancelChoicesButton"].tap()
+        XCTAssertTrue(app.buttons["Source link"].waitForNonExistence(timeout: 5), "Cancel puts the sheet away")
+        XCTAssertFalse(app.staticTexts["Steps"].exists, "nothing was added")
     }
 
     @MainActor
