@@ -22,9 +22,9 @@ struct SectionTextTests {
 
     // MARK: Steps
 
-    @Test func stepsStatusCountsTheStepsOrSaysThereAreNone() {
-        #expect(SectionText.stepsStatus("1. Mix.\n2. Bake.") == "2 steps found.")
-        #expect(SectionText.stepsStatus("1. Mix.") == "1 step found.")
+    @Test func stepsStatusSpeaksUpOnlyWhenThereAreNoSteps() {
+        #expect(SectionText.stepsStatus("1. Mix.\n2. Bake.") == nil)
+        #expect(SectionText.stepsStatus("1. Mix.") == nil)
         #expect(SectionText.stepsStatus("Mix it") == SectionText.noStepsMessage)
         #expect(SectionText.noStepsMessage.hasPrefix("Only numbered steps are valid"))
         #expect(SectionText.stepsStatus("  \n") == nil)

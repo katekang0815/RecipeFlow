@@ -40,12 +40,10 @@ enum SectionText {
     static let onlyNumberedSteps = "Only numbered steps are valid"
     static let noStepsMessage = onlyNumberedSteps + ". Start each step with a number, like 1. 2. 3."
 
-    /// A line for under the field while typing steps: what was found, or why nothing will be saved.
+    /// A line for under the field while typing steps: why nothing will be saved. Nothing when steps are found.
     static func stepsStatus(_ text: String) -> String? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        let found = StepParser.parse(text).count
-        guard found > 0 else { return noStepsMessage }
-        return "\(found) step\(found == 1 ? "" : "s") found."
+        return StepParser.parse(text).isEmpty ? noStepsMessage : nil
     }
 
     /// Steps from a photo added after the steps already in a card. They are numbered on from the last

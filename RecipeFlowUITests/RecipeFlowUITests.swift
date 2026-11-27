@@ -393,7 +393,7 @@ final class RecipeFlowUITests: XCTestCase {
             let joined = lines[1].dropFirst(3) + " " + lines[2].dropFirst(3)
             XCTAssertEqual(joined.trimmingCharacters(in: .whitespaces), "Bake it. Cool it.")
         }
-        XCTAssertEqual(app.staticTexts["sectionEditorMessage"].label, "3 steps found.")
+        XCTAssertFalse(app.staticTexts["sectionEditorMessage"].exists, "no message under valid steps")
         tapDone(app)
 
         XCTAssertTrue(app.staticTexts["3"].waitForExistence(timeout: 5), "three steps")
@@ -413,7 +413,6 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText("\n")
         sleep(1)
         editor.typeText("Cool it.")
-        XCTAssertTrue(app.staticTexts["3 steps found."].waitForExistence(timeout: 5))
         XCTAssertEqual(editor.value as? String, "1. Mix the flour.\n2. Bake it.\n3. Cool it.")
     }
 
@@ -605,7 +604,7 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText("\n")  // Return numbers step 2
         sleep(1)
         editor.typeText("Bake for 20 minutes.")
-        XCTAssertTrue(app.staticTexts["2 steps found."].waitForExistence(timeout: 5))
+        XCTAssertTrue(message.waitForNonExistence(timeout: 5), "the warning goes once the steps are numbered")
         snap(app, "7-typing-steps-in-the-card")
         tapDone(app)
 
@@ -637,9 +636,7 @@ final class RecipeFlowUITests: XCTestCase {
         editor.typeText("\n")  // Return starts step 3 by itself
         sleep(1)  // the cursor is placed a moment after the line break
         editor.typeText("Cool on a rack.")
-        let message = app.staticTexts["sectionEditorMessage"]
-        XCTAssertTrue(message.waitForExistence(timeout: 5))
-        XCTAssertTrue(message.label.contains("3 steps found."))
+        XCTAssertFalse(app.staticTexts["sectionEditorMessage"].exists, "no message under valid steps")
         snap(app, "8-editing-steps-in-place")
         tapDone(app)
 
