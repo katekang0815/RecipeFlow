@@ -337,7 +337,6 @@ struct RichTextEditor: UIViewRepresentable {
 // MARK: - Buttons above the keyboard
 
 private enum KeyboardBarStyle {
-    static let gold = Color(red: 0.89, green: 0.69, blue: 0.22)
     static let bar = Color.white.opacity(0.9)
 }
 
@@ -347,14 +346,11 @@ struct EditingKeyboardButtons: View {
 
     var body: some View {
         HStack {
-            glyph(Text("B").font(.system(size: 22, weight: .bold)), active: controller.style.bold,
-                  id: "boldButton", label: "Bold") { controller.toggle(\.bold) }
+            glyph(Text("B").font(.system(size: 22, weight: .bold)), id: "boldButton", label: "Bold") { controller.toggle(\.bold) }
             Spacer()
-            glyph(Text("I").font(.system(size: 22).italic()), active: controller.style.italic,
-                  id: "italicButton", label: "Italic") { controller.toggle(\.italic) }
+            glyph(Text("I").font(.system(size: 22).italic()), id: "italicButton", label: "Italic") { controller.toggle(\.italic) }
             Spacer()
-            glyph(Text("U").font(.system(size: 22)).underline(), active: controller.style.underline,
-                  id: "underlineButton", label: "Underline") { controller.toggle(\.underline) }
+            glyph(Text("U").font(.system(size: 22)).underline(), id: "underlineButton", label: "Underline") { controller.toggle(\.underline) }
             Spacer()
             colorMenu
             Spacer()
@@ -370,12 +366,11 @@ struct EditingKeyboardButtons: View {
         .padding(.bottom, 10)
     }
 
-    private func glyph(_ text: Text, active: Bool, id: String, label: String, action: @escaping () -> Void) -> some View {
+    private func glyph(_ text: Text, id: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             text
                 .foregroundStyle(Color.black)
                 .frame(width: 38, height: 38)
-                .background(Circle().fill(active ? KeyboardBarStyle.gold.opacity(0.35) : Color.clear))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -404,7 +399,6 @@ struct EditingKeyboardButtons: View {
                 .font(.system(size: 20))
                 .foregroundStyle(Theme.ink)
                 .frame(width: 38, height: 38)
-                .background(Circle().fill(controller.list != nil ? KeyboardBarStyle.gold.opacity(0.35) : Color.clear))
         }
         .accessibilityLabel("List")
         .accessibilityIdentifier("listButton")
@@ -445,7 +439,6 @@ struct EditingKeyboardButtons: View {
                 .font(.system(size: 20))
                 .foregroundStyle(controller.style.color?.color ?? Theme.ink)
                 .frame(width: 38, height: 38)
-                .background(Circle().fill(controller.style.color != nil ? KeyboardBarStyle.gold.opacity(0.35) : Color.clear))
         }
         .accessibilityLabel("Colour")
         .accessibilityIdentifier("highlightButton")
