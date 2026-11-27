@@ -178,39 +178,14 @@ enum PhotoChoice {
     case paste, camera, library, cancel
 }
 
-/// The options for adding a photo or text, in the bottom sheet.
+/// The options for adding something: one row each, with an icon, in a small sheet.
 private struct PhotoChoices: View {
     let title: String
     let canPaste: Bool
     let canTakePhoto: Bool
     let choose: (PhotoChoice) -> Void
 
-    private var rows: [ChoiceSheet<PhotoChoice>.Row] {
-        var rows: [ChoiceSheet<PhotoChoice>.Row] = []
-        if canPaste { rows.append(.init(text: "Paste text", icon: "doc.on.clipboard", value: .paste)) }
-        if canTakePhoto { rows.append(.init(text: "Take photo", icon: "camera", value: .camera)) }
-        rows.append(.init(text: "Choose from library", icon: "photo.on.rectangle", value: .library))
-        return rows
-    }
-
-    var body: some View {
-        ChoiceSheet(title: title, rows: rows, choose: choose, cancel: { choose(.cancel) })
-    }
-}
-
-/// A small sheet that pulls up from the bottom: one row for each option, with an icon, and Cancel.
-struct ChoiceSheet<Value: Hashable>: View {
-    struct Row {
-        let text: String
-        let icon: String
-        let value: Value
-        var color: Color = Theme.ink
-    }
-
-    let title: String
-    let rows: [Row]
-    let choose: (Value) -> Void
-    let cancel: () -> Void
+    private var rowCount: Int { 1 + (canPaste ? 1 : 0) + (canTakePhoto ? 1 : 0) }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -220,8 +195,10 @@ struct ChoiceSheet<Value: Hashable>: View {
                     .foregroundStyle(Theme.ink)
                     .padding(.bottom, 4)
             }
-            ForEach(rows, id: \.value) { row($0) }
-            Button("Cancel", action: cancel)
+            if canPaste { row("Paste text", icon: "doc.on.clipboard", choice: .paste) }
+            if canTakePhoto { row("Take photo", icon: "camera", choice: .camera) }
+            row("Choose from library", icon: "photo.on.rectangle", choice: .library)
+            Button("Cancel") { choose(.cancel) }
                 .foregroundStyle(Theme.ink.opacity(0.7))
                 .padding(.top, 2)
                 .accessibilityIdentifier("cancelChoicesButton")
@@ -230,21 +207,21 @@ struct ChoiceSheet<Value: Hashable>: View {
         .padding(.top, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.background.ignoresSafeArea())
-        .presentationDetents([.height(CGFloat(rows.count) * 62 + (title.isEmpty ? 110 : 150))])
+        .presentationDetents([.height(CGFloat(rowCount) * 62 + (title.isEmpty ? 110 : 150))])
         .presentationDragIndicator(.visible)
     }
 
-    private func row(_ row: Row) -> some View {
-        Button { choose(row.value) } label: {
+    private func row(_ text: String, icon: String, choice: PhotoChoice) -> some View {
+        Button { choose(choice) } label: {
             HStack(spacing: 14) {
-                Image(systemName: row.icon)
+                Image(systemName: icon)
                     .font(.system(size: 20))
                     .frame(width: 28)
-                Text(row.text)
+                Text(text)
                     .font(.system(size: 17))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(row.color)
+            .foregroundStyle(Theme.ink)
             .padding(.horizontal, 16)
             .frame(height: 52)
             .background(RoundedRectangle(cornerRadius: 14).fill(Theme.field))

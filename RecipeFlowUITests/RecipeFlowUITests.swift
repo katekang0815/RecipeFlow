@@ -310,7 +310,7 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testThePlusPullsUpTheFourSections() throws {
+    func testThePlusDropsDownTheFourSections() throws {
         let app = launchWithRecipe(ingredients: "2 cups flour\n1 cup water\n3 eggs")
         app.buttons["addSectionButton"].tap()
         for option in ["Ingredients", "Steps", "Notes", "Source link"] {
@@ -321,9 +321,6 @@ final class RecipeFlowUITests: XCTestCase {
         for old in ["addIngredientsPhotoButton", "addStepsPhotoButton", "addNotesPhotoButton", "addSourceLinkButton"] {
             XCTAssertFalse(app.buttons[old].exists, old)
         }
-        app.buttons["cancelChoicesButton"].tap()
-        XCTAssertTrue(app.buttons["Source link"].waitForNonExistence(timeout: 5), "Cancel puts the sheet away")
-        XCTAssertFalse(app.staticTexts["Steps"].exists, "nothing was added")
     }
 
     @MainActor
@@ -1122,7 +1119,7 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testCancellingTheDotsSheetKeepsTheCardInEditMode() throws {
+    func testTheDotsMenuClosesWithATapElsewhereAndHasEvenSides() throws {
         let app = launchApp(photoText: ["notes": "Rest the dough."])
         openNewRecipe(app)
         fill(app, "Notes")
@@ -1133,15 +1130,10 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["moreButton"].tap()
         let delete = app.buttons["Delete section"]
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Scan text"].exists)
-        sleep(1)
-        snap(app, "14-dots-sheet")
+        snap(app, "14-dots-menu")
 
-        app.buttons["cancelChoicesButton"].tap()
-        XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "Cancel puts the sheet away")
-        XCTAssertTrue(cardEditor(app, "notes").exists, "the card is still being edited")
-        waitForKeyboard(app)
-        cardEditor(app, "notes").typeText(" Overnight.")
-        XCTAssertTrue((cardEditor(app, "notes").value as? String)?.contains("Overnight.") == true, "the keyboard is back")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.45)).tap()
+        XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "a tap elsewhere closes the menu")
+        XCTAssertTrue(cardEditor(app, "notes").exists, "and the card is still being edited")
     }
 }

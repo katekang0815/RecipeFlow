@@ -40,9 +40,6 @@ struct RecipeFlowView: View {
     /// The card a photo is being added to, and a problem reading it.
     @State private var photoTarget: RecipeSection?
     @State private var choosingPhoto = false
-    /// The plus's sheet of sections, and what was chosen in it, done once the sheet has gone.
-    @State private var choosingSection = false
-    @State private var chosenSection: NewSection?
     @State private var photoProblem: (section: RecipeSection, text: String)?
 
     @State private var showLinkEditor = false
@@ -54,7 +51,6 @@ struct RecipeFlowView: View {
     @State private var lastUndoRecord = Date.distantPast
     /// The menu under the three dots is open.
     @State private var showMoreMenu = false
-    @State private var chosenMoreAction: MoreAction?
     /// A photo of steps with no numbered step in it.
     @State private var showOnlyNumbered = false
 
@@ -77,10 +73,12 @@ struct RecipeFlowView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         // The top bar is drawn here, above the page, so the title can sit up beside it without a bar over it.
-        .overlay(alignment: .top) {
-            // The dots' sheet is gone before what was chosen is done, as the camera is shown over this screen.
-            topBar.sheet(isPresented: $showMoreMenu, onDismiss: doChosenMoreAction) { moreSheet }
+        .overlay(alignment: .top) { topBar }
+        // The dots menu is drawn here, as wide as its words need. A tap anywhere else closes it.
+        .overlay {
+            if showMoreMenu, editing != nil { moreMenu }
         }
+        .onChange(of: editing) { showMoreMenu = false }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .background(SwipeBackEnabler())
@@ -133,11 +131,7 @@ struct RecipeFlowView: View {
                 // square, but the arrow and the dots leave room around them in theirs.
                 HStack(spacing: 0) {
                     if !undoStack.isEmpty { UndoButton(action: undo) }
-                    MoreButton {
-                        showMoreMenu = true
-                        // The keyboard goes while the sheet is up. The card stays in edit mode.
-                        sectionFocused = false
-                    }
+                    MoreButton { showMoreMenu.toggle() }
                 }
                 .padding(.trailing, 6)
                 SaveButton { closeKeyboard() }
@@ -147,35 +141,27 @@ struct RecipeFlowView: View {
         .frame(height: 44)
     }
 
-    private var moreSheet: some View {
-        ChoiceSheet<MoreAction>(
-            title: "Edit section",
-            rows: [
-                .init(text: "Scan text", icon: "viewfinder", value: .scan),
-                .init(text: "Delete section", icon: "trash", value: .delete, color: .red),
-            ],
-            choose: { action in
-                chosenMoreAction = action
-                showMoreMenu = false
-            },
-            cancel: { showMoreMenu = false }
-        )
-    }
-
-    private func doChosenMoreAction() {
-        let action = chosenMoreAction
-        chosenMoreAction = nil
-        guard let editing else { return }
-        switch action {
-        case .scan:
-            // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
-            photoTarget = editing
-            scanRequest = true
-        case .delete:
-            deleteSection()
-        case nil:
-            // Cancelled or swiped away: the keyboard comes back.
-            requestFocus(editing)
+    private var moreMenu: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { showMoreMenu = false }
+            MorePanel(
+                scan: {
+                    showMoreMenu = false
+                    // Reads text from a photo into the card being edited, like "Take photo" when adding a section.
+                    guard let editing else { return }
+                    photoTarget = editing
+                    scanRequest = true
+                },
+                delete: {
+                    showMoreMenu = false
+                    deleteSection()
+                }
+            )
+            // Under the top bar, ending where the dots button ends.
+            .padding(.top, 50)
+            .padding(.trailing, 72)
         }
     }
 
@@ -206,7 +192,7 @@ struct RecipeFlowView: View {
                     // The one add button stays below the last section. It is away while the keyboard is up, so
                     // Scan text is then the way to add a photo's text.
                     if editing == nil, focus == nil {
-                        addSectionButton
+                        addSectionMenu
                     }
                     if let photoProblem {
                         Text(photoProblem.text)
@@ -336,61 +322,26 @@ struct RecipeFlowView: View {
         recipe.sourceURL.flatMap(SourceLink.url(from:)) != nil
     }
 
-    /// What the dots offer for the card being edited.
-    private enum MoreAction: Hashable {
-        case scan, delete
-    }
-
-    /// What the plus can add.
-    private enum NewSection: Hashable {
-        case text(RecipeSection)
-        case sourceLink
-    }
-
-    /// The only add button: a plus that pulls up the four sections. Choosing one asks for a photo
+    /// The only add button: a plus that drops down the four sections. Choosing one asks for a photo
     /// (or, for the source link, opens its editor); the section then appears in its place above the plus.
-    private var addSectionButton: some View {
-        Button { choosingSection = true } label: {
+    private var addSectionMenu: some View {
+        Menu {
+            ForEach([RecipeSection.ingredients, .steps, .notes], id: \.self) { section in
+                Button(section.noun.capitalized) {
+                    photoTarget = section
+                    choosingPhoto = true
+                }
+            }
+            Button("Source link") { showLinkEditor = true }
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity, minHeight: 64)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.field))
         }
-        .buttonStyle(.plain)
         .accessibilityLabel("Add a section")
         .accessibilityIdentifier("addSectionButton")
-        // The next screen is shown over this one, so it waits until this sheet has gone.
-        .sheet(isPresented: $choosingSection, onDismiss: addChosenSection) {
-            ChoiceSheet<NewSection>(
-                title: "Add a section",
-                rows: [
-                    .init(text: "Ingredients", icon: "carrot", value: .text(.ingredients)),
-                    .init(text: "Steps", icon: "list.number", value: .text(.steps)),
-                    .init(text: "Notes", icon: "note.text", value: .text(.notes)),
-                    .init(text: "Source link", icon: "link", value: .sourceLink),
-                ],
-                choose: { choice in
-                    chosenSection = choice
-                    choosingSection = false
-                },
-                cancel: { choosingSection = false }
-            )
-        }
-    }
-
-    private func addChosenSection() {
-        let choice = chosenSection
-        chosenSection = nil
-        switch choice {
-        case .text(let section):
-            photoTarget = section
-            choosingPhoto = true
-        case .sourceLink:
-            showLinkEditor = true
-        case nil:
-            break
-        }
     }
 
     /// For UI tests: the text a photo of this section "contains", from the launch arguments.
@@ -414,7 +365,7 @@ struct RecipeFlowView: View {
                 onFocus: { focused in
                     sectionFocused = focused
                     // The keyboard left the card being edited, so save it.
-                    if !focused, editing == section, !showMoreMenu { finishEditing(discardInvalid: false) }
+                    if !focused, editing == section { finishEditing(discardInvalid: false) }
                 }
             )
             .overlay(alignment: .topLeading) {
@@ -802,6 +753,46 @@ private struct MoreButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel("More")
         .accessibilityIdentifier("moreButton")
+    }
+}
+
+/// Scan text (a photo read into the card being edited, the same as "Take photo" when adding a section) and
+/// Delete section. The panel is only as wide as its longest row, with the same room on the left and the right.
+/// (The system's own menu has a fixed width, which leaves a wide empty space on the right.)
+private struct MorePanel: View {
+    let scan: () -> Void
+    let delete: () -> Void
+
+    private let sideRoom: CGFloat = 20
+
+    var body: some View {
+        VStack(spacing: 0) {
+            row("Scan text", icon: "viewfinder", color: .primary, action: scan)
+            Divider().padding(.horizontal, sideRoom)
+            row("Delete section", icon: "trash", color: .red, action: delete)
+        }
+        .fixedSize()
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.15), radius: 18, y: 8)
+    }
+
+    private func row(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 19))
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 17))
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, sideRoom)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 48)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
