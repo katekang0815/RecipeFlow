@@ -895,22 +895,24 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["addSectionButton"].tap()
         app.buttons["Source link"].tap()
 
-        // The Simulator has no camera, so only pasting is offered.
-        let field = app.textFields["sourceLinkField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["takeLinkPhotoButton"].exists)
-        let save = app.buttons["saveSourceLinkButton"]
-        XCTAssertFalse(save.isEnabled, "nothing to save yet")
+        // A pop-up with a field to paste or type into.
+        let popUp = app.alerts["Add source link"]
+        XCTAssertTrue(popUp.waitForExistence(timeout: 5))
+        let field = popUp.textFields.firstMatch
+        XCTAssertFalse(popUp.buttons["Remove link"].exists, "no link to remove yet")
 
+        // Something that is not a link is not saved: the pop-up comes back saying so.
         field.tap()
         field.typeText("hello")
-        XCTAssertFalse(save.isEnabled)
-        XCTAssertTrue(app.staticTexts["sourceLinkMessage"].exists)
+        popUp.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["That doesn't look like a web link."].waitForExistence(timeout: 5))
+        XCTAssertEqual(field.value as? String, "hello", "what was typed is still there")
+
+        tapEnd(of: field)
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5))
         field.typeText("youtube.com/watch?v=abc")
-        XCTAssertTrue(save.isEnabled)
         snap(app, "13-add-source-link")
-        save.tap()
+        popUp.buttons["Save"].tap()
 
         // Saved: the section shows the link and a pencil.
         let link = app.descendants(matching: .any)["sourceLink"]
@@ -921,10 +923,11 @@ final class RecipeFlowUITests: XCTestCase {
 
         // Edit shows the saved link, and Remove takes it away again.
         app.buttons["editSourceLinkButton"].tap()
-        let editField = app.textFields["sourceLinkField"]
-        XCTAssertTrue(editField.waitForExistence(timeout: 5))
+        let editPopUp = app.alerts["Edit source link"]
+        XCTAssertTrue(editPopUp.waitForExistence(timeout: 5))
+        let editField = editPopUp.textFields.firstMatch
         XCTAssertTrue((editField.value as? String ?? "").contains("youtube.com/watch?v=abc"))
-        app.buttons["removeSourceLinkButton"].tap()
+        editPopUp.buttons["Remove link"].tap()
         XCTAssertTrue(app.staticTexts["Source link"].waitForNonExistence(timeout: 5))
         XCTAssertFalse(app.descendants(matching: .any)["sourceLink"].exists)
     }
@@ -1031,7 +1034,7 @@ final class RecipeFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testTheLinkButtonAboveTheKeyboardOpensTheSourceLinkScreen() throws {
+    func testTheLinkButtonAboveTheKeyboardOpensTheSourceLinkPopUp() throws {
         let app = launchApp(photoText: ["notes": "Rest the dough."])
         openNewRecipe(app)
         fill(app, "Notes")
@@ -1040,8 +1043,9 @@ final class RecipeFlowUITests: XCTestCase {
         waitForKeyboard(app)
 
         app.buttons["linkButton"].tap()
-        XCTAssertTrue(app.textFields["sourceLinkField"].waitForExistence(timeout: 5), "the add source link screen")
-        XCTAssertTrue(app.buttons["saveSourceLinkButton"].exists)
+        let popUp = app.alerts["Add source link"]
+        XCTAssertTrue(popUp.waitForExistence(timeout: 5), "the add source link pop-up")
+        XCTAssertTrue(popUp.buttons["Save"].exists)
     }
 
     @MainActor

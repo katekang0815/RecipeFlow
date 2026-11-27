@@ -75,8 +75,6 @@ private struct PhotoSource: ViewModifier {
     @State private var showCameraDenied = false
     /// A library photo waiting to be cropped.
     @State private var photoToCrop: UIImage?
-    /// What the chosen option does, once the choices have gone.
-    @State private var pendingAction: (() -> Void)?
 
     /// UI tests cannot drive the system photo picker, so with this launch argument
     /// "Choose from library" hands over a made-up picture.
@@ -84,28 +82,20 @@ private struct PhotoSource: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // The choices are in a small sheet, each with an icon. What a choice does waits until the sheet has gone,
-            // since the camera and the library are shown over the same screen.
-            .sheet(isPresented: $isChoosing, onDismiss: {
-                let action = pendingAction
-                pendingAction = nil
-                action?()
-            }) {
-                PhotoChoices(
-                    title: title,
-                    canPaste: onPaste != nil,
-                    canTakePhoto: CameraPicker.isAvailable,
-                    choose: { choice in
-                        pendingAction = action(for: choice)
-                        isChoosing = false
-                    }
-                )
+            .confirmationDialog(title, isPresented: $isChoosing, titleVisibility: title.isEmpty ? .hidden : .visible) {
+                if let onPaste {
+                    Button("Paste text", action: onPaste)
+                }
+                if CameraPicker.isAvailable {
+                    Button("Take photo", action: openCamera)
+                }
+                Button("Choose from library", action: openLibrary)
             }
             .onChange(of: scan) { _, requested in
                 guard requested else { return }
                 scan = false
                 // Without a camera (the Simulator) it falls back to the library.
-                (action(for: CameraPicker.isAvailable ? .camera : .library))?()
+                if CameraPicker.isAvailable { openCamera() } else { openLibrary() }
             }
             .photosPicker(isPresented: $showLibrary, selection: $pickerItem, matching: .images)
             .onChange(of: pickerItem) { _, item in
@@ -139,17 +129,12 @@ private struct PhotoSource: ViewModifier {
             .cameraDeniedAlert(isPresented: $showCameraDenied)
     }
 
-    private func action(for choice: PhotoChoice) -> (() -> Void)? {
-        switch choice {
-        case .cancel:
-            return nil
-        case .paste:
-            return onPaste
-        case .camera:
-            return { CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true }) }
-        case .library:
-            return { if Self.fakePhoto { libraryPhoto(Self.madeUpPhoto()) } else { showLibrary = true } }
-        }
+    private func openCamera() {
+        CameraAccess.request(granted: { showCamera = true }, denied: { showCameraDenied = true })
+    }
+
+    private func openLibrary() {
+        if Self.fakePhoto { libraryPhoto(Self.madeUpPhoto()) } else { showLibrary = true }
     }
 
     /// A photo from the library: cropped first when asked to, otherwise handed on as it is.
@@ -171,62 +156,5 @@ private struct PhotoSource: ViewModifier {
             UIColor.brown.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 300, height: 300))
         }
-    }
-}
-
-enum PhotoChoice {
-    case paste, camera, library, cancel
-}
-
-/// The options for adding something: one row each, with an icon, in a small sheet.
-private struct PhotoChoices: View {
-    let title: String
-    let canPaste: Bool
-    let canTakePhoto: Bool
-    let choose: (PhotoChoice) -> Void
-
-    private var rowCount: Int { 1 + (canPaste ? 1 : 0) + (canTakePhoto ? 1 : 0) }
-
-    var body: some View {
-        VStack(spacing: 10) {
-            if !title.isEmpty {
-                Text(title)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .padding(.bottom, 4)
-            }
-            if canPaste { row("Paste text", icon: "doc.on.clipboard", choice: .paste) }
-            if canTakePhoto { row("Take photo", icon: "camera", choice: .camera) }
-            row("Choose from library", icon: "photo.on.rectangle", choice: .library)
-            Button("Cancel") { choose(.cancel) }
-                .foregroundStyle(Theme.ink.opacity(0.7))
-                .padding(.top, 2)
-                .accessibilityIdentifier("cancelChoicesButton")
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Theme.background.ignoresSafeArea())
-        .presentationDetents([.height(CGFloat(rowCount) * 62 + (title.isEmpty ? 110 : 150))])
-        .presentationDragIndicator(.visible)
-    }
-
-    private func row(_ text: String, icon: String, choice: PhotoChoice) -> some View {
-        Button { choose(choice) } label: {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .frame(width: 28)
-                Text(text)
-                    .font(.system(size: 17))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 16)
-            .frame(height: 52)
-            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.field))
-            .contentShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
     }
 }

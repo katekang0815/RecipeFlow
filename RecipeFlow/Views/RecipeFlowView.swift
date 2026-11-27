@@ -100,13 +100,12 @@ struct RecipeFlowView: View {
         .photoTextSource(isChoosing: $choosingPhoto, scan: $scanRequest, onPaste: pastePlainText) { outcome in
             handlePhoto(fakeText(for: photoTarget) ?? outcome)
         }
-        .sheet(isPresented: $showLinkEditor) {
-            SourceLinkEditor(
-                current: recipe.sourceURL,
-                onSave: { recipe.sourceURL = $0 },
-                onRemove: { recipe.sourceURL = nil }
-            )
-        }
+        .sourceLinkPopUp(
+            isPresented: $showLinkEditor,
+            current: recipe.sourceURL,
+            onSave: { recipe.sourceURL = $0 },
+            onRemove: { recipe.sourceURL = nil }
+        )
     }
 
     /// Back on the left; while a card is edited, undo (once something was typed or pasted), more and save on the right.
