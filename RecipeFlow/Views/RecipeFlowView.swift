@@ -132,6 +132,9 @@ struct RecipeFlowView: View {
                     if !undoStack.isEmpty { UndoButton(action: undo) }
                     MoreButton { showMoreMenu.toggle() }
                 }
+                // The dots' menu opens in their place, so they (and undo, under it) are not seen through it.
+                // They keep their room, so nothing moves.
+                .opacity(showMoreMenu ? 0 : 1)
                 .padding(.trailing, 6)
                 SaveButton { closeKeyboard() }
             }
@@ -158,8 +161,7 @@ struct RecipeFlowView: View {
                     deleteSection()
                 }
             )
-            // Under the top bar, ending where the dots button ends.
-            .padding(.top, 50)
+            // Its top level with the top of the check button, ending just before it.
             .padding(.trailing, 72)
         }
     }

@@ -1134,7 +1134,13 @@ final class RecipeFlowUITests: XCTestCase {
         app.buttons["moreButton"].tap()
         let delete = app.buttons["Delete section"]
         XCTAssertTrue(delete.waitForExistence(timeout: 5))
+        sleep(1)
         snap(app, "14-dots-menu")
+        // The menu's top is level with the check button's, and it ends before it. Its first row is 6 points down.
+        let check = app.buttons["checkButton"].frame
+        XCTAssertEqual(app.buttons["Scan text"].frame.minY - 6, check.minY, accuracy: 1)
+        XCTAssertLessThan(delete.frame.maxX, check.minX)
+        XCTAssertFalse(app.buttons["moreButton"].isHittable, "the dots are hidden under their menu")
 
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.45)).tap()
         XCTAssertTrue(delete.waitForNonExistence(timeout: 5), "a tap elsewhere closes the menu")
