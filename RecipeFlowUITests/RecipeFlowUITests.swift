@@ -168,6 +168,22 @@ final class RecipeFlowUITests: XCTestCase {
     // MARK: Adding a recipe
 
     @MainActor
+    func testTheSplashLeavesByItselfOrAtATap() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-inMemoryStore", "-showSplash"]
+        app.launch()
+        let splash = app.descendants(matching: .any)["splash"].firstMatch
+        XCTAssertTrue(splash.waitForNonExistence(timeout: 20), "it leaves by itself")
+        XCTAssertTrue(app.buttons["addRecipeButton"].isHittable)
+
+        app.terminate()
+        app.launch()
+        if splash.waitForExistence(timeout: 5) { splash.tap() }
+        XCTAssertTrue(splash.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["addRecipeButton"].isHittable)
+    }
+
+    @MainActor
     func testTheEmptyHomeScreenHasJustAPlusAndItAsksForAThumbnail() throws {
         let app = launchApp()
         XCTAssertTrue(app.staticTexts["My Recipes"].exists)
