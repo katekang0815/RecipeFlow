@@ -33,6 +33,8 @@ struct HomeView: View {
                             Text("My Recipes")
                                 .font(.system(size: 34, weight: .bold))
                                 .foregroundStyle(Theme.ink)
+                                // A tap on the heading is a tap on the page.
+                                .allowsHitTesting(false)
                             Spacer()
                             searchButton
                         }
@@ -42,42 +44,58 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, margin)
                     .padding(.top, 16)
-                    // A tap beside the buttons closes an open card menu.
-                    .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeMenu() })
+                    // A tap beside the buttons closes the search, or an open card menu.
+                    .background(Color.clear.contentShape(Rectangle()).onTapGesture { tappedThePage() })
 
-                    if showsNameList {
-                        // Search open with nothing typed yet: the names of the recipes, stacked, with no thumbnails.
-                        // A list, so a name can be swiped to the left to show Delete.
-                        List {
-                            ForEach(shownRecipes) { recipe in
-                                nameRow(for: recipe)
+                    // The room the names or the cards have, so the empty part of it can be tapped to close the search.
+                    GeometryReader { page in
+                        if showsNameList {
+                            // Search open with nothing typed yet: the names of the recipes, stacked, with no thumbnails.
+                            // A list, so a name can be swiped to the left to show Delete.
+                            List {
+                                ForEach(shownRecipes) { recipe in
+                                    nameRow(for: recipe)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 4, leading: margin, bottom: 4, trailing: margin))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button(role: .destructive) {
+                                                recipe.delete(from: context)
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
+                                        }
+                                }
+                                // A list does not pass taps through, so its empty part is a last row that takes them.
+                                Color.clear
+                                    .frame(height: max(80, page.size.height - CGFloat(shownRecipes.count) * 60))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { tappedThePage() }
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: margin, bottom: 4, trailing: margin))
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button(role: .destructive) {
-                                            recipe.delete(from: context)
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
-                                    }
+                                    .listRowInsets(EdgeInsets())
+                                    .accessibilityHidden(true)
                             }
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                    } else {
-                        ScrollView {
-                            // With no recipes the plus card is centered on the page instead, see below.
-                            if !recipes.isEmpty {
-                                LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
-                                    ForEach(shownRecipes) { recipe in
-                                        card(for: recipe).frame(height: side)
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                        } else {
+                            ScrollView {
+                                VStack(spacing: 0) {
+                                    // With no recipes the plus card is centered on the page instead, see below.
+                                    if !recipes.isEmpty {
+                                        LazyVGrid(columns: [GridItem(.fixed(side), spacing: gap), GridItem(.fixed(side))], spacing: gap) {
+                                            ForEach(shownRecipes) { recipe in
+                                                card(for: recipe).frame(height: side)
+                                            }
+                                            // Search results are only the recipes found, with no plus card.
+                                            if !searching { addCard.frame(height: side) }
+                                        }
+                                        .padding(.horizontal, margin)
                                     }
-                                    addCard.frame(height: side)
                                 }
-                                .padding(.horizontal, margin)
-                                // The gaps between the cards close an open card menu.
-                                .background(Color.clear.contentShape(Rectangle()).onTapGesture { closeMenu() })
+                                .frame(maxWidth: .infinity, minHeight: page.size.height, alignment: .top)
+                                // The gaps between the cards and the room below them.
+                                .background(Color.clear.contentShape(Rectangle()).onTapGesture { tappedThePage() })
                             }
                         }
                     }
@@ -138,8 +156,12 @@ struct HomeView: View {
     /// A magnifying glass at the right end of the heading line; tapping it opens or closes the field.
     private var searchButton: some View {
         Button {
-            searching.toggle()
-            if searching { searchFocused = true } else { query = "" }
+            if searching {
+                closeSearch()
+            } else {
+                searching = true
+                searchFocused = true
+            }
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 22, weight: .bold))
@@ -230,6 +252,18 @@ struct HomeView: View {
     }
 
     private func closeMenu() { menuRecipe = nil }
+
+    private func closeSearch() {
+        searching = false
+        searchFocused = false
+        query = ""
+    }
+
+    /// A tap on an empty part of the page: closes an open card menu, and the search.
+    private func tappedThePage() {
+        closeMenu()
+        if searching { closeSearch() }
+    }
 
     /// A recipe as just its name, for the search list.
     private func nameRow(for recipe: Recipe) -> some View {

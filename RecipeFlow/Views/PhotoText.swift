@@ -30,12 +30,13 @@ extension View {
     /// A photo is cropped, read, and reported to `onOutcome`.
     /// `onPaste` adds "Paste text" above the photo choices, for a section that is typed or pasted.
     func photoTextSource(
+        title: String,
         isChoosing: Binding<Bool>,
         scan: Binding<Bool> = .constant(false),
         onPaste: (() -> Void)? = nil,
         onOutcome: @escaping (PhotoText.Outcome) -> Void
     ) -> some View {
-        photoSource(title: "", isChoosing: isChoosing, scan: scan, onPaste: onPaste) { image in
+        photoSource(title: title, isChoosing: isChoosing, scan: scan, onPaste: onPaste) { image in
             Task {
                 if let image { onOutcome(await PhotoText.read(image)) }
                 else { onOutcome(.problem("Couldn't open that photo.")) }
@@ -82,7 +83,7 @@ private struct PhotoSource: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(title, isPresented: $isChoosing, titleVisibility: title.isEmpty ? .hidden : .visible) {
+            .confirmationDialog(title, isPresented: $isChoosing, titleVisibility: .visible) {
                 if let onPaste {
                     Button("Paste text", action: onPaste)
                 }

@@ -862,7 +862,7 @@ final class RecipeFlowUITests: XCTestCase {
         field.typeText("sou")
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 1)
         XCTAssertTrue(app.buttons["recipeRow"].firstMatch.label.contains("Soup"))
-        XCTAssertTrue(app.buttons["addRecipeButton"].exists, "cards again, with the plus card")
+        XCTAssertFalse(app.buttons["addRecipeButton"].exists, "search results have no plus card")
         snap(app, "5-search")
 
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
@@ -877,6 +877,58 @@ final class RecipeFlowUITests: XCTestCase {
         XCTAssertFalse(field.exists)
         XCTAssertEqual(app.buttons.matching(identifier: "recipeRow").count, 2)
         XCTAssertTrue(app.buttons["addRecipeButton"].exists)
+    }
+
+    @MainActor
+    func testATapOnAnEmptyPartOfThePageClosesTheSearch() throws {
+        let app = launchApp()
+        openNewRecipe(app)
+        typeTitle(app, "Soup")
+        app.buttons["backButton"].tap()
+        let search = app.buttons["searchButton"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        let field = app.textFields["searchField"]
+        // Below the one name or row of cards, and above the keyboard.
+        let empty = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.52))
+        func openSearch() {
+            search.tap()
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            waitForKeyboard(app)
+        }
+        func assertClosed(_ message: String) {
+            XCTAssertTrue(field.waitForNonExistence(timeout: 5), message)
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5), message)
+            XCTAssertTrue(app.buttons["addRecipeButton"].exists, "the cards are back")
+        }
+
+        // The field itself keeps the search open.
+        openSearch()
+        field.tap()
+        sleep(1)
+        XCTAssertTrue(field.exists)
+
+        // Below the list of names.
+        empty.tap()
+        assertClosed("closed by a tap below the names")
+
+        // On the heading.
+        openSearch()
+        app.staticTexts["My Recipes"].tap()
+        assertClosed("closed by a tap on the heading")
+
+        // Below the filtered cards; what was typed is cleared.
+        openSearch()
+        field.typeText("sou")
+        XCTAssertTrue(app.buttons["Clear search"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["addRecipeButton"].exists, "search results have no plus card")
+        empty.tap()
+        assertClosed("closed by a tap below the cards")
+        openSearch()
+        XCTAssertFalse(app.buttons["Clear search"].exists, "the search starts empty again")
+
+        // A name still opens its recipe.
+        app.buttons["recipeRow"].firstMatch.tap()
+        XCTAssertTrue(titleField(app).waitForExistence(timeout: 5))
     }
 
     // MARK: The source link
@@ -1001,7 +1053,7 @@ final class RecipeFlowUITests: XCTestCase {
         let paste = app.buttons["Paste text"]
         XCTAssertTrue(paste.waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Choose from library"].exists)
-        XCTAssertFalse(app.staticTexts["Add a photo"].exists, "no title above the choices")
+        XCTAssertTrue(app.staticTexts["Add notes"].exists, "the title says what is being added")
         XCTAssertLessThan(paste.frame.minY, app.buttons["Choose from library"].frame.minY, "it is the first choice")
         sleep(1)  // let the choices finish sliding in
         paste.tap()

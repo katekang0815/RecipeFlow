@@ -97,7 +97,10 @@ struct RecipeFlowView: View {
         } message: {
             Text("Start each step with a number, like 1. 2. 3.")
         }
-        .photoTextSource(isChoosing: $choosingPhoto, scan: $scanRequest, onPaste: pastePlainText) { outcome in
+        .photoTextSource(
+            title: "Add \(photoTarget?.noun ?? "")",
+            isChoosing: $choosingPhoto, scan: $scanRequest, onPaste: pastePlainText
+        ) { outcome in
             handlePhoto(fakeText(for: photoTarget) ?? outcome)
         }
         .sourceLinkPopUp(
