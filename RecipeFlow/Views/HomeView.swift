@@ -102,10 +102,18 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .overlay {
-                    if recipes.isEmpty, !showsNameList {
+                    if recipes.isEmpty, !searching {
                         // In the middle of the screen, the same size as a card in the grid.
                         addCard
                             .frame(width: side, height: side)
+                            // The welcome sits above the plus, without moving it from the middle.
+                            .overlay(alignment: .top) {
+                                WelcomeView()
+                                    .fixedSize()
+                                    .alignmentGuide(.top) { $0[.bottom] + 20 }
+                                    // Not part of the plus: a tap on it does nothing.
+                                    .allowsHitTesting(false)
+                            }
                             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                     }
                 }

@@ -172,6 +172,9 @@ final class RecipeFlowUITests: XCTestCase {
         let app = launchApp()
         XCTAssertTrue(app.staticTexts["My Recipes"].exists)
         XCTAssertFalse(app.buttons["recipeRow"].exists)
+        let welcome = app.staticTexts["Add your first recipe!"]
+        XCTAssertTrue(welcome.waitForExistence(timeout: 5))
+        XCTAssertLessThan(welcome.frame.maxY, app.buttons["addRecipeButton"].frame.minY, "above the plus")
         snap(app, "1-home")
 
         app.buttons["addRecipeButton"].tap()
@@ -186,6 +189,7 @@ final class RecipeFlowUITests: XCTestCase {
     func testAPictureMakesACardAndTappingTheCardOpensAnEmptyRecipe() throws {
         let app = launchApp()
         addCard(app)
+        XCTAssertFalse(app.staticTexts["Add your first recipe!"].exists, "the welcome goes with the first recipe")
         // Adding the picture stays on the home screen, and the plus moves after the card.
         XCTAssertFalse(titleField(app).exists)
         XCTAssertTrue(app.buttons["addRecipeButton"].exists)
