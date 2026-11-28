@@ -693,10 +693,10 @@ struct RecipeFlowView: View {
 
             Button { showLinkEditor = true } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Theme.ink)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(Theme.ink))
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Edit source link")
             .accessibilityIdentifier("editSourceLinkButton")
